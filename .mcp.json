@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "open-mem": {
+      "command": "node",
+      "args": ["--no-warnings", "${CLAUDE_PLUGIN_ROOT}/bin/open-mem.mjs", "mcp"]
+    }
+  }
+}

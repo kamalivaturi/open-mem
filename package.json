@@ -1,0 +1,15 @@
+{
+  "name": "open-mem",
+  "version": "0.1.0",
+  "description": "Free, local, zero-dependency long-term memory for Claude Code: hooks, SQLite FTS5 + semantic search, MCP tools, web GUI and Obsidian sync.",
+  "type": "module",
+  "bin": { "open-mem": "bin/open-mem.mjs" },
+  "scripts": {
+    "test": "node --no-warnings --test test/*.test.mjs",
+    "viewer": "node --no-warnings bin/open-mem.mjs viewer"
+  },
+  "engines": { "node": ">=22.13" },
+  "keywords": ["claude", "claude-code", "memory", "mcp", "obsidian", "ollama", "sqlite", "plugin"],
+  "license": "Apache-2.0",
+  "files": ["bin", "src", "hooks", "fonts", ".claude-plugin", ".mcp.json", "PRIVACY.md"]
+}

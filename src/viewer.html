@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>open-mem</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235b5bd6'/%3E%3Cpath d='M9 21V11l7 6 7-6v10' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+@font-face { font-family: "Inter"; src: url("/fonts/InterVariable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+
+:root {
+  --font: "Inter", "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --bg: #f7f7f8; --surface: #ffffff; --surface-2: #f1f1f4; --border: #e3e3e8; --border-strong: #cfcfd8;
+  --text: #17171c; --text-2: #55555f; --text-3: #686874;
+  --accent: #5b5bd6; --accent-hover: #4a4ac4; --accent-soft: #ececfb; --on-accent: #fff;
+  --danger: #b42828; --on-danger: #ffffff; --danger-soft: #fdecec; --ok: #1f8a4c; --ok-soft: #e6f5ec; --warn: #8a5300; --warn-soft: #fdf3e2;
+  --shadow: 0 1px 2px rgb(0 0 0 / .05), 0 4px 16px rgb(0 0 0 / .06);
+  --shadow-lg: 0 12px 48px rgb(0 0 0 / .18);
+  --t-bugfix: #d23b3b; --t-feature: #1f8a4c; --t-refactor: #8e4ec6; --t-change: #64748b;
+  --t-discovery: #2f6fdb; --t-decision: #b26b00; --t-security_note: #d4661c;
+  --radius: 12px; --radius-sm: 8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0f12; --surface: #17171c; --surface-2: #1f1f26; --border: #2a2a33; --border-strong: #3a3a46;
+    --text: #ededf2; --text-2: #a8a8b5; --text-3: #8e8e9a;
+    --accent: #8b8bf5; --accent-hover: #a0a0ff; --accent-soft: #24243d; --on-accent: #0f0f12;
+    --danger: #f06b6b; --on-danger: #1c0d0e; --danger-soft: #3a1c1f; --ok: #4cc27f; --ok-soft: #16301f; --warn: #e6a23c; --warn-soft: #33270f;
+    --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 16px rgb(0 0 0 / .3); --shadow-lg: 0 12px 48px rgb(0 0 0 / .6);
+    --t-bugfix: #f06b6b; --t-feature: #4cc27f; --t-refactor: #b88af0; --t-change: #94a3b8;
+    --t-discovery: #6ea2ff; --t-decision: #e6a23c; --t-security_note: #f08a4b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f0f12; --surface: #17171c; --surface-2: #1f1f26; --border: #2a2a33; --border-strong: #3a3a46;
+  --text: #ededf2; --text-2: #a8a8b5; --text-3: #8e8e9a;
+  --accent: #8b8bf5; --accent-hover: #a0a0ff; --accent-soft: #24243d; --on-accent: #0f0f12;
+  --danger: #f06b6b; --on-danger: #1c0d0e; --danger-soft: #3a1c1f; --ok: #4cc27f; --ok-soft: #16301f; --warn: #e6a23c; --warn-soft: #33270f;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 16px rgb(0 0 0 / .3); --shadow-lg: 0 12px 48px rgb(0 0 0 / .6);
+  --t-bugfix: #f06b6b; --t-feature: #4cc27f; --t-refactor: #b88af0; --t-change: #94a3b8;
+  --t-discovery: #6ea2ff; --t-decision: #e6a23c; --t-security_note: #f08a4b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Layout ---------- */
+.topbar { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 220px minmax(0, 1fr) auto; align-items: center; gap: 16px;
+  height: 60px; padding: 0 20px; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 16px; letter-spacing: -.01em; text-decoration: none; color: var(--text); }
+.brand svg { flex: none; }
+.search-wrap { position: relative; max-width: 620px; width: 100%; }
+.search-wrap svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.search { width: 100%; height: 40px; padding: 0 44px 0 38px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.search:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.search:focus ~ .kbd, .search:not(:placeholder-shown) ~ .kbd { display: none; }
+.kbd { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--text-3); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; background: var(--surface-2); }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+
+.shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100vh - 60px); }
+.sidebar { position: sticky; top: 60px; align-self: start; height: calc(100vh - 60px); padding: 16px 12px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-2); text-decoration: none; cursor: pointer; font-weight: 500; }
+.nav-btn:hover { background: var(--surface-2); color: var(--text); }
+.nav-btn[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.nav-btn .count { margin-left: auto; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 4px 0; border-top: 1px solid var(--border); }
+.coffee { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; border-radius: var(--radius-sm); background: #ffdd00; color: #17171c; font-weight: 600; text-decoration: none; }
+.coffee:hover { filter: brightness(.95); }
+.muted-link { font-size: 12px; color: var(--text-3); text-decoration: none; text-align: center; }
+.muted-link:hover { color: var(--text-2); }
+main { min-width: 0; padding: 28px 32px 64px; max-width: 1180px; width: 100%; }
+h1 { font-size: 24px; letter-spacing: -.02em; margin: 0 0 4px; font-weight: 650; }
+.lede { color: var(--text-2); margin: 0 0 24px; }
+h2 { font-size: 15px; margin: 0 0 12px; font-weight: 600; }
+
+/* ---------- Components ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 0 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); cursor: pointer; font-weight: 500; white-space: nowrap; transition: background .12s, border-color .12s; }
+.btn:hover { background: var(--surface-2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+.btn.danger:hover { background: var(--danger-soft); }
+.btn.danger-solid { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
+.btn.ghost { border-color: transparent; background: none; }
+.btn.ghost:hover { background: var(--surface-2); }
+.icon-btn { width: 36px; padding: 0; }
+.spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
+.seg button { min-height: 30px; min-width: 34px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; min-width: 0; }
+.grid { display: grid; gap: 16px; }
+.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 16px; }
+.stat .label { color: var(--text-2); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.stat .value { font-size: 28px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.stat .hint { font-size: 12px; color: var(--text-3); }
+.two { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); margin-bottom: 16px; }
+.two.balanced { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
+.bars div { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background: var(--accent); opacity: .85; min-height: 2px; }
+.bars div.zero { background: var(--border); }
+.bars-axis { display: flex; justify-content: space-between; color: var(--text-3); font-size: 11px; margin-top: 6px; }
+
+.hbar { display: grid; grid-template-columns: 110px minmax(0, 1fr) 36px; align-items: center; gap: 10px; font-size: 13px; padding: 4px 0; }
+.hbar .track { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.hbar .fill { height: 100%; border-radius: 4px; }
+.hbar .n { text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+.badge { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 550; white-space: nowrap;
+  color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--text-2); background: var(--surface-2); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.chip:hover { border-color: var(--border-strong); color: var(--text); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.select, .input { height: 36px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); min-width: 0; }
+.input { width: 100%; }
+textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
+.select:focus, .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.result-meta { color: var(--text-3); font-size: 13px; margin: 0 0 8px; }
+
+.day { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; margin: 20px 0 8px; }
+.list { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--border);
+  background: none; text-align: left; cursor: pointer; }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--surface-2); }
+.row .ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); font-size: 14px; }
+.row .title { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .sub { color: var(--text-2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .side { display: flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 12px; white-space: nowrap; }
+
+.session-card { display: block; width: 100%; text-align: left; cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.session-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.session-card .t { font-weight: 600; margin: 6px 0 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.session-card .next { color: var(--text-2); font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-3); font-size: 12px; }
+.sessions-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+.empty { text-align: center; padding: 48px 20px; color: var(--text-2); }
+.empty .big { font-size: 32px; margin-bottom: 8px; }
+.skeleton { height: 56px; border-bottom: 1px solid var(--border); background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.banner { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 13px; }
+.banner.warn { background: var(--warn-soft); color: var(--warn); }
+.banner.err { background: var(--danger-soft); color: var(--danger); }
+.banner code { word-break: break-all; }
+.check { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
+.check .dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; flex: none; border: 2px solid var(--border-strong); color: transparent; }
+.check.done .dot { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.check.done span { color: var(--text-2); text-decoration: line-through; }
+.health { display: flex; flex-direction: column; gap: 10px; }
+.health .line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.health .line span:last-child { color: var(--text-2); text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.ok-text { color: var(--ok) !important; } .err-text { color: var(--danger) !important; }
+
+/* ---------- Drawer ---------- */
+.backdrop { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / .35); opacity: 0; pointer-events: none; transition: opacity .18s; }
+.backdrop.open { opacity: 1; pointer-events: auto; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: min(560px, 100vw); background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow-lg);
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.2, .8, .2, 1); display: flex; flex-direction: column; }
+.drawer.open { transform: none; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 14px 24px; border-bottom: 1px solid var(--border); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px 32px; }
+.drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--border); }
+.drawer h3 { font-size: 19px; letter-spacing: -.01em; margin: 10px 0 6px; line-height: 1.3; }
+.section { margin-top: 20px; }
+.section h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); margin: 0 0 8px; font-weight: 600; }
+.section p { margin: 0; white-space: pre-wrap; }
+.section ul { margin: 0; padding-left: 18px; }
+.section li { margin: 3px 0; }
+.files { font: 12px/1.6 ui-monospace, "SF Mono", Consolas, monospace; color: var(--text-2); word-break: break-all; }
+.tl { position: relative; padding-left: 20px; }
+.tl::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+.tl-item { position: relative; padding: 6px 0; font-size: 13px; }
+.tl-item::before { content: ""; position: absolute; left: -18px; top: 13px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--c, var(--border-strong)); }
+.tl-item.anchor { font-weight: 600; }
+.tl-item.anchor::before { background: var(--c); }
+.tl-item button { all: unset; cursor: pointer; } .tl-item button:hover { color: var(--accent); }
+.tl-item .when { color: var(--text-3); font-size: 12px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Settings ---------- */
+.form { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field label { font-weight: 550; font-size: 13px; }
+.field .help { color: var(--text-3); font-size: 12px; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.providers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.provider { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: pointer; background: var(--surface); text-align: left; }
+.provider:hover { border-color: var(--accent); }
+.provider[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.provider b { font-weight: 600; }
+.provider span { font-size: 12px; color: var(--text-2); }
+.pw { position: relative; } .pw .input { padding-right: 70px; } .pw .btn { position: absolute; right: 3px; top: 3px; min-height: 30px; padding: 0 10px; }
+.savebar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding: 14px 0; margin-top: 8px;
+  background: linear-gradient(to top, var(--bg) 70%, transparent); }
+.savebar .state { margin-right: auto; color: var(--text-3); font-size: 13px; }
+.savebar .state.dirty { color: var(--warn); }
+
+/* ---------- Dialog + toasts ---------- */
+dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 22px; width: min(420px, calc(100vw - 32px)); box-shadow: var(--shadow-lg); }
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog h3 { margin: 0 0 6px; font-size: 17px; }
+dialog p { margin: 0 0 18px; color: var(--text-2); }
+dialog .acts { display: flex; justify-content: flex-end; gap: 8px; }
+.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 40px)); }
+.toast { padding: 12px 14px; border-radius: var(--radius-sm); background: var(--text); color: var(--bg); box-shadow: var(--shadow-lg); font-size: 13px; animation: rise .2s ease-out; }
+.toast.err { background: var(--danger); color: var(--on-danger); }
+@keyframes rise { from { transform: translateY(8px); opacity: 0; } }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 960px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .two, .two.balanced { grid-template-columns: minmax(0, 1fr); }
+  .providers { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .topbar { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 0 12px; }
+  .brand span { display: none; }
+  .kbd, #runBtn .lbl { display: none; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { position: sticky; top: 60px; z-index: 10; height: auto; flex-direction: row; overflow-x: auto; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .nav-btn { width: auto; flex: none; } .nav-btn .count, .sidebar-foot { display: none; }
+  main { padding: 20px 16px 48px; }
+  .fields { grid-template-columns: minmax(0, 1fr); }
+  .row { grid-template-columns: 28px minmax(0, 1fr); } .row .side { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/dashboard" aria-label="open-mem home">
+    <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M9 21V11l7 6 7-6v10" stroke="var(--on-accent)" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>open-mem</span>
+  </a>
+  <div class="search-wrap" role="search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <label class="sr-only" for="q">Search memory</label>
+    <input id="q" class="search" type="search" placeholder="Search memory…" autocomplete="off">
+    <span class="kbd" aria-hidden="true">/</span>
+  </div>
+  <div class="top-actions">
+    <button class="btn" id="runBtn" title="Process queued tool calls now"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span class="lbl">Process queue</span></button>
+    <div class="seg" role="group" aria-label="Theme">
+      <button data-theme-btn="light" title="Light" aria-label="Light theme"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+      <button data-theme-btn="system" title="System" aria-label="System theme"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button data-theme-btn="dark" title="Dark" aria-label="Dark theme"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="sidebar" aria-label="Main">
+    <a class="nav-btn" href="#/dashboard" data-nav="dashboard"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard</a>
+    <a class="nav-btn" href="#/memory" data-nav="memory"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 2.2 1.2 3.4 2 4.5.8 1 1 2 1 3.5h6c0-1.5.2-2.5 1-3.5.8-1.1 2-2.3 2-4.5a6 6 0 0 0-6-6Z"/><path d="M9 21h6"/></svg>Memory<span class="count" id="cObs"></span></a>
+    <a class="nav-btn" href="#/sessions" data-nav="sessions"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Sessions<span class="count" id="cSess"></span></a>
+    <a class="nav-btn" href="#/settings" data-nav="settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Settings</a>
+    <div class="sidebar-foot">
+      <a class="coffee" href="https://buymeacoffee.com/kamalivaturi" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+      <a class="muted-link" href="https://github.com/kamalivaturi/open-mem#readme" target="_blank" rel="noopener">GitHub · Privacy policy</a>
+    </div>
+  </nav>
+  <main id="view" tabindex="-1"></main>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+  <div class="drawer-head">
+    <strong id="drawerTitle">Details</strong>
+    <button class="btn ghost icon-btn" id="drawerClose" aria-label="Close details"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="drawer-actions" id="drawerActions"></div>
+</aside>
+
+<dialog id="confirm">
+  <h3 id="confirmTitle">Are you sure?</h3>
+  <p id="confirmText"></p>
+  <div class="acts"><button class="btn" value="cancel" id="confirmCancel">Cancel</button><button class="btn danger-solid" id="confirmOk">Delete</button></div>
+</dialog>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+const TYPES = ['bugfix', 'feature', 'refactor', 'change', 'discovery', 'decision', 'security_note'];
+const ICONS = { bugfix: '●', feature: '◆', refactor: '↻', change: '✓', discovery: '○', decision: '⚖', security_note: '⚷' };
+const LABELS = { bugfix: 'Bug fix', feature: 'Feature', refactor: 'Refactor', change: 'Change', discovery: 'Discovery', decision: 'Decision', security_note: 'Security' };
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const h = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const view = $('#view');
+const state = { q: '', project: '', type: '', days: '', stats: null, results: [] };
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', 'x-open-mem': '1' } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function toast(msg, kind = '') {
+  const t = document.createElement('div');
+  t.className = `toast ${kind}`; t.textContent = msg;
+  $('#toasts').append(t);
+  setTimeout(() => t.remove(), kind === 'err' ? 6000 : 3200);
+}
+
+const fmt = ms => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+function ago(ms) {
+  const s = (Date.now() - ms) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function dayLabel(ms) {
+  const d = new Date(ms), t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((t - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+  return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: d.getFullYear() === t.getFullYear() ? undefined : 'numeric' });
+}
+const badge = t => `<span class="badge" style="--c:var(--t-${t})">${ICONS[t] || '•'} ${h(LABELS[t] || t)}</span>`;
+const debounce = (fn, ms) => { let id; return (...a) => { clearTimeout(id); id = setTimeout(() => fn(...a), ms); }; };
+
+/* ---------- Theme ---------- */
+function setTheme(mode) {
+  if (mode === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.dataset.theme = mode;
+  $$('[data-theme-btn]').forEach(b => b.setAttribute('aria-pressed', b.dataset.themeBtn === mode));
+  try { localStorage.setItem('open-mem-theme', mode); } catch {}
+}
+$$('[data-theme-btn]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+let savedTheme = 'system';
+try { savedTheme = localStorage.getItem('open-mem-theme') || 'system'; } catch {}
+setTheme(savedTheme);
+
+/* ---------- Drawer ---------- */
+let lastFocus = null;
+function openDrawer(title, body, actions = '') {
+  lastFocus = document.activeElement;
+  $('#drawerTitle').textContent = title;
+  $('#drawerBody').innerHTML = body;
+  $('#drawerActions').innerHTML = actions;
+  $('#drawerActions').hidden = !actions;
+  $('#drawerBody').scrollTop = 0;
+  $('#drawer').classList.add('open'); $('#backdrop').classList.add('open');
+  $('#drawer').setAttribute('aria-hidden', 'false');
+  $('#drawerClose').focus();
+}
+function closeDrawer() {
+  if (!$('#drawer').classList.contains('open')) return;
+  $('#drawer').classList.remove('open'); $('#backdrop').classList.remove('open');
+  $('#drawer').setAttribute('aria-hidden', 'true');
+  lastFocus?.focus?.();
+}
+$('#drawerClose').addEventListener('click', closeDrawer);
+$('#backdrop').addEventListener('click', closeDrawer);
+
+function confirmDialog(title, text, okLabel = 'Delete') {
+  const d = $('#confirm');
+  $('#confirmTitle').textContent = title; $('#confirmText').textContent = text; $('#confirmOk').textContent = okLabel;
+  return new Promise(resolve => {
+    const done = v => { d.close(); $('#confirmOk').onclick = $('#confirmCancel').onclick = null; resolve(v); };
+    $('#confirmOk').onclick = () => done(true);
+    $('#confirmCancel').onclick = () => done(false);
+    d.oncancel = () => resolve(false);
+    d.showModal(); $('#confirmCancel').focus();
+  });
+}
+
+/* ---------- Observation detail ---------- */
+async function showObservation(id) {
+  let o;
+  try { o = await api(`/api/observations/${id}`); } catch (e) { return toast(e.message, 'err'); }
+  const list = (title, items, cls = '') => items?.length ? `<div class="section"><h4>${title}</h4><ul class="${cls}">${items.map(i => `<li>${h(i)}</li>`).join('')}</ul></div>` : '';
+  openDrawer(`Memory #${o.id}`, `
+    ${badge(o.type)}
+    <h3>${h(o.title)}</h3>
+    <div class="meta"><span class="tag" title="${h(o.project)}">${h(o.project)}</span><span title="${h(fmt(o.created_at))}">${h(fmt(o.created_at))}</span></div>
+    ${o.subtitle ? `<div class="section"><p>${h(o.subtitle)}</p></div>` : ''}
+    ${o.narrative ? `<div class="section"><h4>Narrative</h4><p>${h(o.narrative)}</p></div>` : ''}
+    ${list('Facts', o.facts)}
+    ${o.concepts.length ? `<div class="section"><h4>Concepts</h4><div class="chips">${o.concepts.map(c => `<span class="tag">${h(c)}</span>`).join('')}</div></div>` : ''}
+    ${list('Files modified', o.files_modified, 'files')}
+    ${list('Files read', o.files_read, 'files')}
+    <div class="section" id="tlBox"></div>`,
+    `<button class="btn" id="aTl">Show timeline</button>
+     ${o.session_id !== 'manual' ? '<button class="btn" id="aSess">Open session</button>' : ''}
+     <button class="btn" id="aCopy">Copy as Markdown</button>
+     <button class="btn danger" id="aDel" style="margin-left:auto">Delete</button>`);
+  $('#aTl').onclick = async e => {
+    e.currentTarget.disabled = true;
+    try {
+      const items = await api(`/api/timeline/${o.id}`);
+      $('#tlBox').innerHTML = `<h4>Timeline</h4><div class="tl">${items.map(i => i.kind === 'observation'
+        ? `<div class="tl-item ${i.anchor ? 'anchor' : ''}" style="--c:var(--t-${i.type})"><span class="when">${h(ago(i.created_at))}</span><button data-obs="${i.id}">${h(i.title)}</button></div>`
+        : i.kind === 'prompt' ? `<div class="tl-item"><span class="when">${h(ago(i.created_at))}</span>» ${h(i.text.slice(0, 160))}</div>`
+        : `<div class="tl-item" style="--c:var(--accent)"><span class="when">${h(ago(i.created_at))}</span>≡ Summary: ${h(i.completed || i.request || '')}</div>`).join('')}</div>`;
+      $$('#tlBox [data-obs]').forEach(b => b.onclick = () => showObservation(b.dataset.obs));
+      $('#tlBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) { toast(err.message, 'err'); e.currentTarget.disabled = false; }
+  };
+  if ($('#aSess')) $('#aSess').onclick = () => showSession(o.session_id);
+  $('#aCopy').onclick = async () => {
+    const md = `### ${o.title}\n*${o.type} · ${o.project} · ${fmt(o.created_at)}*\n\n${o.subtitle}\n\n${o.narrative}\n${o.facts.map(f => `- ${f}`).join('\n')}`;
+    try { await navigator.clipboard.writeText(md); toast('Copied to clipboard'); } catch { toast('Clipboard blocked by the browser', 'err'); }
+  };
+  $('#aDel').onclick = async () => {
+    if (!await confirmDialog('Delete this memory?', `“${o.title}” will be removed permanently. Claude won't see it again.`)) return;
+    try {
+      await api(`/api/observations/${o.id}`, { method: 'DELETE' });
+      closeDrawer(); toast('Memory deleted');
+      state.results = state.results.filter(r => r.id !== o.id);
+      refreshCounts();
+      if (current === 'memory') renderResults(); else route();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+/* ---------- Session detail ---------- */
+async function showSession(id) {
+  let d;
+  try { d = await api(`/api/sessions/${encodeURIComponent(id)}`); } catch (e) { return toast(e.message, 'err'); }
+  const s = d.summary || {};
+  const sec = (t, v) => v ? `<div class="section"><h4>${t}</h4><p>${h(v)}</p></div>` : '';
+  openDrawer('Session', `
+    <div class="meta"><span class="tag">${h(d.session.project)}</span><span>${h(fmt(d.session.started_at))}</span><span>${d.observations.length} memories · ${d.prompts.length} prompts</span></div>
+    <h3>${h(s.request || d.prompts[0]?.text?.slice(0, 140) || 'Untitled session')}</h3>
+    ${d.summary ? '' : '<div class="banner warn">No summary yet. It is written when the session stops and the queue is processed.</div>'}
+    ${sec('Completed', s.completed)}${sec('Learned', s.learned)}${sec('Investigated', s.investigated)}${sec('Next steps', s.next_steps)}${sec('Notes', s.notes)}
+    ${d.observations.length ? `<div class="section"><h4>Memories</h4><div class="list">${d.observations.map(rowHtml).join('')}</div></div>` : ''}
+    ${d.prompts.length ? `<div class="section"><details><summary style="cursor:pointer"><h4 style="display:inline">Prompts (${d.prompts.length})</h4></summary><ul>${d.prompts.map(p => `<li>${h(p.text.slice(0, 400))}</li>`).join('')}</ul></details></div>` : ''}`);
+  bindRows($('#drawerBody'));
+}
+
+/* ---------- Rows ---------- */
+const rowHtml = r => `<button class="row" data-obs="${r.id}" style="--c:var(--t-${r.type})">
+  <span class="ico" aria-hidden="true">${ICONS[r.type] || '•'}</span>
+  <span style="min-width:0"><div class="title">${h(r.title)}</div>${r.subtitle ? `<div class="sub">${h(r.subtitle)}</div>` : ''}</span>
+  <span class="side"><span class="tag" title="${h(r.project)}">${h(r.project)}</span><span title="${h(fmt(r.created_at))}">${h(ago(r.created_at))}</span></span>
+</button>`;
+const bindRows = el => $$('[data-obs]', el).forEach(b => b.onclick = () => showObservation(b.dataset.obs));
+
+/* ---------- Views ---------- */
+let current = '';
+async function refreshCounts() {
+  try {
+    state.stats = await api('/api/stats');
+    $('#cObs').textContent = state.stats.observations || '';
+    $('#cSess').textContent = state.stats.summaries || '';
+  } catch {}
+  return state.stats;
+}
+
+async function dashboard() {
+  view.innerHTML = `<h1>Dashboard</h1><p class="lede">What open-mem remembers for Claude across sessions.</p><div class="card skeleton" style="height:120px"></div>`;
+  const s = await refreshCounts();
+  if (!s) { view.innerHTML = `<h1>Dashboard</h1><div class="banner err">Could not reach the open-mem server.</div>`; return; }
+  const max = Math.max(1, ...s.daily.map(d => d.n));
+  const tmax = Math.max(1, ...s.types.map(t => t.n));
+  const settings = (await api('/api/settings').catch(() => ({ settings: {} }))).settings;
+  const steps = [
+    ['Install the Claude Code plugin', s.sessions > 0],
+    ['Choose an observer model', !!settings.provider],
+    ['First memory captured', s.observations > 0],
+    ['First session summary', s.summaries > 0],
+    ['Connect your Obsidian vault', !!(settings.obsidianDir || settings.vaultDir)],
+  ];
+  view.innerHTML = `
+    <h1>Dashboard</h1><p class="lede">What open-mem remembers for Claude across sessions.</p>
+    ${s.lastDrain?.error ? `<div class="banner err"><span>⚠</span><div><b>Last processing run failed ${h(ago(s.lastDrain.at))}.</b> ${/not found/.test(s.lastDrain.error) && settings.provider === 'ollama'
+      ? `Install the model: <code>ollama pull ${h(settings.model)}</code>, or pick another provider in <a href="#/settings">Settings</a>.`
+      : `Run a check in <a href="#/settings">Settings</a>.`}<br><code>${h(s.lastDrain.error.slice(0, 300))}</code></div></div>` : ''}
+    ${s.pending ? `<div class="banner warn"><span>⏳</span><div>${s.pending} tool call(s) waiting for the observer. <button class="btn" id="dRun" style="margin-left:8px;min-height:28px">Process now</button></div></div>` : ''}
+    <div class="grid stats">
+      <div class="card stat"><div class="label">Memories</div><div class="value">${s.observations}</div><div class="hint">${s.projects.length} project(s)</div></div>
+      <div class="card stat"><div class="label">Sessions</div><div class="value">${s.sessions}</div><div class="hint">recorded</div></div>
+      <div class="card stat"><div class="label">Summaries</div><div class="value">${s.summaries}</div><div class="hint">handoffs written</div></div>
+      <div class="card stat"><div class="label">Queue</div><div class="value">${s.pending}</div><div class="hint">pending tool calls</div></div>
+    </div>
+    <div class="grid two balanced">
+      <div class="card"><h2>Memories per day · last 30 days</h2>
+        <div class="bars" role="img" aria-label="Bar chart of memories per day">${s.daily.map(d => `<div class="${d.n ? '' : 'zero'}" style="height:${d.n ? Math.max(6, d.n / max * 100) : 2}%" title="${h(d.day)}: ${d.n}"></div>`).join('')}</div>
+        <div class="bars-axis"><span>${h(s.daily[0].day)}</span><span>Today</span></div></div>
+      <div class="card"><h2>Observer model</h2><div class="health">
+        <div class="field"><label for="oProv">Provider</label>
+          <select class="select" id="oProv">${[['ollama', 'Ollama · free, local'], ['claude', 'Claude plan'], ['openai', 'OpenAI-compatible']].map(([v, l]) => `<option value="${v}" ${settings.provider === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label for="oModel">Model</label><input class="input" id="oModel" list="oModels" autocomplete="off"><datalist id="oModels"></datalist><span class="help" id="oHint"></span></div>
+        <button class="btn primary" id="oApply" disabled>Switch model</button>
+        <div class="line"><span>Semantic search</span><span>${settings.embedModel ? h(settings.embedModel) : 'off'}</span></div>
+        <div class="line"><span>Connection</span><span id="hRes">checking…</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn" id="hQuick" title="Is the provider up and the model installed? (milliseconds)">Quick check</button><button class="btn" id="hFull" title="Ask the model for a real reply (seconds)">Full test</button></div></div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <h2 style="margin:0">Obsidian vault</h2>
+        <span class="badge" style="--c:${settings.vaultDir ? 'var(--ok)' : 'var(--text-3)'}">${settings.vaultDir ? `● Linked · ${s.notes} notes indexed` : '○ Not linked'}</span></div>
+      <p class="help" style="margin:0 0 14px">Link your vault and open-mem indexes every note as memory, re-checks it for new and changed notes at each session start (and live while this page is open), skips duplicates, and gives Claude the most relevant notes as context.</p>
+      <div class="fields">
+        <div class="field"><label for="vDir">Vault folder</label><input class="input" id="vDir" placeholder="C:\\Users\\you\\Documents\\MyVault" value="${h(settings.vaultDir || '')}"></div>
+        <div class="field"><label for="vExclude">Never index these folders</label><input class="input" id="vExclude" placeholder="journal, private" value="${h((settings.vaultExclude || []).join(', '))}"><span class="help">Comma-separated, relative to the vault</span></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;margin:12px 0 14px;cursor:pointer"><input type="checkbox" id="vExport" ${settings.obsidianDir ? 'checked' : ''} style="width:16px;height:16px;flex:none;accent-color:var(--accent)"><span>Also save each session's handoff note into the vault, in the <code>claude/open-mem</code> folder</span></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn primary" id="vLink">${settings.vaultDir ? 'Update link' : 'Link vault'}</button>
+        ${settings.vaultDir ? `<button class="btn" id="vReindex">Re-index now</button><button class="btn danger" id="vUnlink">Unlink</button>
+        <span class="help" style="margin-left:auto">${s.notesIndexedAt ? `last indexed ${h(ago(s.notesIndexedAt))}` : ''}${s.watching ? ' · watching for changes' : ''}</span>` : ''}
+      </div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h2>Projects</h2>${s.projects.length ? `<div class="list">${s.projects.map(p => `<button class="row" data-project="${h(p.project)}" style="--c:var(--accent)"><span class="ico" aria-hidden="true">▤</span><span style="min-width:0"><div class="title">${h(p.project)}</div><div class="sub">last activity ${h(ago(p.last))}</div></span><span class="side">${p.n} memories</span></button>`).join('')}</div>` : '<div class="empty">No projects yet.</div>'}</div>
+      <div class="card">${s.observations ? `<h2>By type</h2>${s.types.map(t => `<div class="hbar"><span>${badge(t.type)}</span><div class="track"><div class="fill" style="width:${t.n / tmax * 100}%;background:var(--t-${t.type})"></div></div><span class="n">${t.n}</span></div>`).join('')}`
+        : `<h2>Getting started</h2>${steps.map(([t, ok]) => `<div class="check ${ok ? 'done' : ''}"><span class="dot">✓</span><span>${h(t)}</span></div>`).join('')}<p class="lede" style="margin:12px 0 0;font-size:13px">${steps.filter(x => x[1]).length} of ${steps.length} done.</p>`}</div>
+    </div>`;
+  $$('[data-project]').forEach(b => b.onclick = () => { state.project = b.dataset.project; location.hash = '#/memory'; });
+  $('#hQuick').onclick = e => testConnection('quick', e.currentTarget, $('#hRes'));
+  $('#hFull').onclick = e => testConnection('full', e.currentTarget, $('#hRes'));
+  testConnection('quick', null, $('#hRes'), true);   // instant status on load
+  if ($('#dRun')) $('#dRun').onclick = runQueue;
+  bindObserverSwitch(settings);
+  bindVault(settings);
+}
+
+// Observer model switch: provider + model, applied in one click.
+async function bindObserverSwitch(settings) {
+  const m = await api('/api/models').catch(() => ({ ollama: [], claude: ['haiku', 'sonnet', 'opus'] }));
+  const prov = $('#oProv'), model = $('#oModel'), apply = $('#oApply');
+  if (!prov) return;
+  const fill = () => {
+    const p = prov.value;
+    const opts = p === 'ollama' ? m.ollama : p === 'claude' ? m.claude : [];
+    $('#oModels').innerHTML = opts.map(o => `<option value="${h(o)}">`).join('');
+    model.value = p === settings.provider ? (p === 'claude' ? settings.claudeModel : settings.model) : (opts[0] || '');
+    model.placeholder = p === 'openai' ? 'e.g. google/gemini-2.0-flash-exp:free' : '';
+    $('#oHint').textContent = p === 'ollama' ? (m.ollama.length ? `${m.ollama.length} installed model(s)` : 'No Ollama models installed. Run: ollama pull qwen2.5:7b')
+      : p === 'claude' ? 'Runs on your Claude subscription; haiku is cheapest' : 'Set the API URL and key in Settings';
+    apply.disabled = p === settings.provider && model.value === (p === 'claude' ? settings.claudeModel : settings.model);
+  };
+  const dirty = () => { apply.disabled = !model.value.trim(); };
+  prov.onchange = () => { fill(); dirty(); };
+  model.oninput = dirty;
+  apply.onclick = async () => {
+    const p = prov.value, v = model.value.trim();
+    apply.disabled = true;
+    try {
+      await api('/api/settings', { method: 'PUT', body: JSON.stringify(p === 'claude' ? { provider: p, claudeModel: v } : { provider: p, model: v }) });
+      Object.assign(settings, p === 'claude' ? { provider: p, claudeModel: v } : { provider: p, model: v });
+      toast(`Observer switched to ${p} · ${v}`);
+      testConnection('quick', null, $('#hRes'), true);
+    } catch (e) { toast(e.message, 'err'); apply.disabled = false; }
+  };
+  fill();
+}
+
+// Obsidian vault link / re-index / unlink.
+function bindVault(settings) {
+  const busy = (btn, label) => { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.innerHTML = `<span class="spin"></span> ${label}`; };
+  const idle = btn => { btn.disabled = false; btn.innerHTML = btn.dataset.label; };
+  const report = r => `${r.added} added, ${r.updated} updated, ${r.removed} removed${r.duplicates ? `, ${r.duplicates} duplicate(s) skipped` : ''}`;
+  $('#vLink').onclick = async e => {
+    const dir = $('#vDir').value.trim();
+    if (!dir) { toast('Paste the path of your Obsidian vault folder first', 'err'); $('#vDir').focus(); return; }
+    busy(e.currentTarget, 'Indexing…');
+    try {
+      const r = await api('/api/vault', { method: 'POST', body: JSON.stringify({ vaultDir: dir, exportNotes: $('#vExport').checked,
+        vaultExclude: $('#vExclude').value.split(',').map(x => x.trim()).filter(Boolean) }) });
+      toast(`${r.isVault ? 'Vault' : 'Folder (no .obsidian found)'} linked: ${r.scanned} notes scanned, ${report(r)}`);
+      dashboard();
+    } catch (err) { toast(err.message, 'err'); idle(e.currentTarget); }
+  };
+  if ($('#vReindex')) $('#vReindex').onclick = async e => {
+    busy(e.currentTarget, 'Indexing…');
+    try { toast(`Re-indexed: ${report(await api('/api/vault/reindex', { method: 'POST' }))}`); dashboard(); }
+    catch (err) { toast(err.message, 'err'); idle(e.currentTarget); }
+  };
+  if ($('#vUnlink')) $('#vUnlink').onclick = async () => {
+    if (!await confirmDialog('Unlink the vault?', 'The note index is removed from open-mem. Your vault files are not touched.', 'Unlink')) return;
+    try { await api('/api/vault', { method: 'DELETE' }); toast('Vault unlinked'); dashboard(); } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+const ms = n => (n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString()) + ' ms';
+
+// quick = reachability and installed models (milliseconds); full = a real generation round trip.
+async function testConnection(mode, btn, out, silent = false) {
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.innerHTML = `<span class="spin"></span> ${mode === 'full' ? 'Generating…' : 'Checking…'}`; }
+  try {
+    const r = await api(`/api/test-provider?mode=${mode}`, { method: 'POST' });
+    const emb = r.embeddings == null ? '' : r.embeddings ? ' · embeddings ✓' : ` · embeddings off${r.embedMissing ? ` (ollama pull ${r.embedMissing})` : ''}`;
+    out.className = r.ok ? 'ok-text' : 'err-text';
+    out.textContent = r.ok
+      ? `✓ ${r.provider} ${mode === 'full' ? 'replied' : 'reachable'} in ${ms(r.ms)}${emb}`
+      : `✗ ${r.error || 'unexpected reply: ' + r.reply}`;
+    if (!silent) toast(r.ok ? (mode === 'full' ? `Model replied in ${ms(r.ms)}` : `Provider reachable in ${ms(r.ms)}`) : 'Observer model is not reachable', r.ok ? '' : 'err');
+  } catch (err) { out.className = 'err-text'; out.textContent = err.message; }
+  if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label; }
+}
+
+async function runQueue() {
+  const btn = $('#runBtn'); btn.disabled = true; const label = btn.innerHTML; btn.innerHTML = '<span class="spin"></span><span class="lbl">Processing…</span>';
+  try {
+    const r = await api('/api/drain', { method: 'POST' });
+    if (r.busy) toast('Already processing in the background');
+    else if (r.error) toast(`Stopped: ${r.error}`, 'err');
+    else toast(`Done: ${r.observations} new memories, ${r.summaries} summaries`);
+    route();
+  } catch (e) { toast(e.message, 'err'); }
+  btn.disabled = false; btn.innerHTML = label;
+}
+$('#runBtn').addEventListener('click', runQueue);
+
+async function memory() {
+  if (!state.stats) await refreshCounts();
+  const projects = state.stats?.projects || [];
+  view.innerHTML = `
+    <h1>Memory</h1><p class="lede">Everything Claude has learned. Click a memory for details, timeline and actions.</p>
+    <div class="filters">
+      <label class="sr-only" for="fProject">Project</label>
+      <select class="select" id="fProject"><option value="">All projects</option>${projects.map(p => `<option ${p.project === state.project ? 'selected' : ''}>${h(p.project)}</option>`).join('')}</select>
+      <label class="sr-only" for="fDays">Time range</label>
+      <select class="select" id="fDays">${[['', 'Any time'], ['1', 'Last 24 hours'], ['7', 'Last 7 days'], ['30', 'Last 30 days']].map(([v, l]) => `<option value="${v}" ${v === state.days ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <div class="chips" role="group" aria-label="Type">
+        <button class="chip" data-type="" aria-pressed="${!state.type}">All</button>
+        ${TYPES.map(t => `<button class="chip" data-type="${t}" aria-pressed="${state.type === t}">${ICONS[t]} ${LABELS[t]}</button>`).join('')}
+      </div>
+    </div>
+    <p class="result-meta" id="rMeta" aria-live="polite"></p>
+    <div id="results"><div class="list">${'<div class="skeleton"></div>'.repeat(5)}</div></div>`;
+  $('#fProject').onchange = e => { state.project = e.target.value; loadResults(); };
+  $('#fDays').onchange = e => { state.days = e.target.value; loadResults(); };
+  $$('[data-type]').forEach(b => b.onclick = () => {
+    state.type = b.dataset.type;
+    $$('[data-type]').forEach(c => c.setAttribute('aria-pressed', c === b));
+    loadResults();
+  });
+  loadResults();
+}
+
+let searchSeq = 0;
+async function loadResults() {
+  const seq = ++searchSeq;
+  const p = new URLSearchParams({ q: state.q, project: state.project, type: state.type, days: state.days });
+  try {
+    const r = await api(`/api/search?${p}`);
+    if (seq !== searchSeq) return;           // a newer search already answered
+    state.results = r.results; state.hybrid = r.hybrid;
+    renderResults();
+  } catch (e) { if (seq === searchSeq) $('#results').innerHTML = `<div class="banner err">${h(e.message)}</div>`; }
+}
+
+function renderResults() {
+  const box = $('#results'); if (!box) return;
+  const rs = state.results;
+  $('#rMeta').textContent = state.q ? `${rs.length} result(s) for “${state.q}” · ${state.hybrid ? 'keyword + semantic' : 'keyword'} search` : `${rs.length} most recent`;
+  if (!rs.length) {
+    const filtered = state.q || state.project || state.type || state.days;
+    box.innerHTML = `<div class="card empty"><div class="big">${filtered ? '🔍' : '🧠'}</div>${filtered
+      ? 'Nothing matches. Try fewer words or clear the filters.<br><br><button class="btn" id="clearF">Clear filters</button>'
+      : 'No memories yet. Use Claude Code with the open-mem plugin and they will appear here.'}</div>`;
+    if ($('#clearF')) $('#clearF').onclick = () => { Object.assign(state, { q: '', project: '', type: '', days: '' }); $('#q').value = ''; memory(); };
+    return;
+  }
+  // Group by day (Miller's law: chunk long lists).
+  const groups = [];
+  for (const r of rs) {
+    const label = state.q ? 'Best matches' : dayLabel(r.created_at);
+    if (groups.at(-1)?.label !== label) groups.push({ label, items: [] });
+    groups.at(-1).items.push(r);
+  }
+  box.innerHTML = groups.map(g => `<div class="day">${h(g.label)}</div><div class="list">${g.items.map(rowHtml).join('')}</div>`).join('');
+  bindRows(box);
+}
+
+async function sessions() {
+  view.innerHTML = `<h1>Sessions</h1><p class="lede">Handoff summaries written at the end of each Claude session.</p><div class="grid sessions-grid">${'<div class="card skeleton" style="height:130px"></div>'.repeat(6)}</div>`;
+  let rows;
+  try { rows = await api(`/api/sessions${state.project ? `?project=${encodeURIComponent(state.project)}` : ''}`); }
+  catch (e) { view.innerHTML += `<div class="banner err">${h(e.message)}</div>`; return; }
+  if (current !== 'sessions') return;
+  view.innerHTML = `<h1>Sessions</h1><p class="lede">Handoff summaries written at the end of each Claude session.${state.project ? ` Showing <b>${h(state.project)}</b> · <button class="btn ghost" id="allP" style="min-height:28px">show all</button>` : ''}</p>
+    ${rows.length ? `<div class="grid sessions-grid">${rows.map(r => `<button class="card session-card" data-sess="${h(r.id)}">
+      <div class="meta"><span class="tag" title="${h(r.project)}">${h(r.project)}</span><span>${h(ago(r.started_at))}</span><span>${r.observations} memories</span></div>
+      <div class="t">${h(r.request || 'Summary pending')}</div>
+      ${r.next_steps ? `<div class="next"><b>Next:</b> ${h(r.next_steps)}</div>` : ''}
+    </button>`).join('')}</div>` : '<div class="card empty"><div class="big">🕑</div>No sessions yet.</div>'}`;
+  $$('[data-sess]').forEach(b => b.onclick = () => showSession(b.dataset.sess));
+  if ($('#allP')) $('#allP').onclick = () => { state.project = ''; sessions(); };
+}
+
+async function settingsView() {
+  view.innerHTML = `<h1>Settings</h1><p class="lede">Saved to your local settings file. Changes apply to the next hook or query.</p><div class="card skeleton" style="height:300px"></div>`;
+  let data;
+  try { data = await api('/api/settings'); } catch (e) { view.innerHTML = `<div class="banner err">${h(e.message)}</div>`; return; }
+  const s = data.settings;
+  const field = (k, label, help = '', type = 'text', extra = '') => `<div class="field" data-for="${k}"><label for="s_${k}">${label}</label>
+    <input class="input" id="s_${k}" name="${k}" type="${type}" value="${h(Array.isArray(s[k]) ? s[k].join(', ') : s[k] ?? '')}" ${extra}>${help ? `<span class="help">${help}</span>` : ''}</div>`;
+  const providers = [['ollama', 'Ollama', 'Free and offline, runs on your machine'], ['claude', 'Claude plan', 'Uses `claude -p` on your subscription'], ['openai', 'OpenAI-compatible', 'OpenRouter, Gemini, Groq, LM Studio…']];
+  view.innerHTML = `<h1>Settings</h1><p class="lede">Saved to <code>${h(data.file)}</code>. Changes apply to the next hook or query.</p>
+  <form class="form" id="sForm" autocomplete="off">
+    <div class="card"><h2>Observer model</h2>
+      <div class="providers" role="radiogroup" aria-label="Provider">${providers.map(([v, t, d]) => `<button type="button" class="provider" role="radio" data-provider="${v}" aria-checked="${s.provider === v}"><b>${t}</b><span>${h(d)}</span></button>`).join('')}</div>
+      <input type="hidden" name="provider" id="s_provider" value="${h(s.provider)}">
+      <div class="fields" style="margin-top:16px">
+        ${field('model', 'Model', 'e.g. qwen2.5:7b, llama3.1:8b, or google/gemini-2.0-flash-exp:free')}
+        ${field('ollamaUrl', 'Ollama URL', 'Also used for embeddings')}
+        ${field('claudeModel', 'Claude model', 'haiku is cheapest on your plan', 'text', 'list="claudeModels"')}
+        ${field('openaiBaseUrl', 'API base URL', 'Any OpenAI-compatible /chat/completions endpoint')}
+        <div class="field" data-for="openaiApiKey"><label for="s_openaiApiKey">API key</label><div class="pw"><input class="input" id="s_openaiApiKey" name="openaiApiKey" type="password" value="${h(s.openaiApiKey)}"><button type="button" class="btn ghost" id="pwToggle">Show</button></div><span class="help">Stored only in your local settings file. OPEN_MEM_API_KEY overrides it.</span></div>
+      </div>
+      <datalist id="claudeModels"><option value="haiku"><option value="sonnet"><option value="opus"></datalist>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px"><button type="button" class="btn" id="sQuick">Quick check</button><button type="button" class="btn" id="sFull">Full test</button><span id="sRes" class="help"></span></div>
+    </div>
+    <div class="card"><h2>Memory & context</h2><div class="fields">
+      ${field('embedModel', 'Embedding model (Ollama)', 'Empty turns semantic search off. Try nomic-embed-text.')}
+      ${field('language', 'Memory language', 'Language the observer writes in')}
+      ${field('contextObservations', 'Memories injected at session start', 'Compact index lines; about 20 tokens each', 'number', 'min="0" max="200"')}
+      ${field('contextSummaries', 'Summaries injected at session start', '', 'number', 'min="0" max="10"')}
+      ${field('batchSize', 'Tool calls per observer request', 'Higher is cheaper, lower is fresher', 'number', 'min="1" max="50"')}
+      ${field('viewerPort', 'Viewer port', 'Takes effect on restart', 'number', 'min="1024" max="65535"')}
+    </div></div>
+    <div class="card"><h2>Obsidian</h2><div class="fields">
+      ${field('obsidianDir', 'Export session notes to', 'One note per session plus an index note per project, e.g. C:\\Vault\\claude\\open-mem')}
+      ${field('vaultDir', 'Linked vault (indexed as memory)', 'Every note is indexed and kept current; Claude searches it with vault_search. Read-only.')}
+      ${field('vaultExclude', 'Never index these vault folders', 'Comma-separated, relative to the vault, e.g. journal, private')}
+      ${field('contextNotes', 'Vault notes listed at session start', 'Most relevant notes for the current project', 'number', 'min="0" max="20"')}
+    </div></div>
+    <div class="card"><h2>Privacy</h2><div class="fields">
+      ${field('skipTools', 'Never record these tools', 'Comma-separated; a trailing * matches a prefix, e.g. mcp__gmail*')}
+    </div><p class="help" style="margin:12px 0 0">Secrets (API keys, tokens, passwords, private keys) are redacted before anything is stored. Wrap text in &lt;private&gt;…&lt;/private&gt; to keep it out of memory.</p></div>
+    <div class="savebar"><span class="state" id="sState">All changes saved</span><button type="button" class="btn" id="sReset" disabled>Discard changes</button><button type="submit" class="btn primary" id="sSave" disabled>Save settings</button></div>
+  </form>`;
+  const form = $('#sForm');
+  const showProviderFields = p => {
+    const vis = { ollama: ['model', 'ollamaUrl'], claude: ['claudeModel'], openai: ['model', 'openaiBaseUrl', 'openaiApiKey'] }[p];
+    ['model', 'ollamaUrl', 'claudeModel', 'openaiBaseUrl', 'openaiApiKey'].forEach(k => { $(`[data-for="${k}"]`).hidden = !vis.includes(k); });
+  };
+  const dirty = on => {
+    $('#sSave').disabled = $('#sReset').disabled = !on;
+    $('#sState').textContent = on ? 'Unsaved changes' : 'All changes saved';
+    $('#sState').classList.toggle('dirty', on);
+    settingsDirty = on;
+  };
+  showProviderFields(s.provider);
+  $$('[data-provider]').forEach(b => b.onclick = () => {
+    $$('[data-provider]').forEach(x => x.setAttribute('aria-checked', x === b));
+    $('#s_provider').value = b.dataset.provider; showProviderFields(b.dataset.provider); dirty(true);
+  });
+  $('#pwToggle').onclick = () => { const i = $('#s_openaiApiKey'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; $('#pwToggle').textContent = show ? 'Hide' : 'Show'; };
+  form.addEventListener('input', () => dirty(true));
+  $('#sReset').onclick = () => { settingsDirty = false; settingsView(); };
+  for (const [id, mode] of [['#sQuick', 'quick'], ['#sFull', 'full']]) {
+    $(id).onclick = e => settingsDirty ? toast('Save your changes first, then test') : testConnection(mode, e.currentTarget, $('#sRes'));
+  }
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(form));
+    $('#sSave').disabled = true;
+    try { await api('/api/settings', { method: 'PUT', body: JSON.stringify(body) }); dirty(false); toast('Settings saved'); }
+    catch (err) { toast(err.message, 'err'); $('#sSave').disabled = false; }
+  };
+}
+let settingsDirty = false;
+
+/* ---------- Router ---------- */
+const views = { dashboard, memory, sessions, settings: settingsView };
+function route() {
+  const name = location.hash.replace(/^#\/?/, '').split('?')[0];
+  current = views[name] ? name : 'dashboard';
+  $$('[data-nav]').forEach(a => a.dataset.nav === current ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  closeDrawer();
+  views[current]();
+}
+window.addEventListener('hashchange', e => {
+  if (settingsDirty && !confirm('You have unsaved settings. Leave anyway?')) { history.replaceState(null, '', e.oldURL); return; }
+  settingsDirty = false; route();
+});
+window.addEventListener('beforeunload', e => { if (settingsDirty) e.preventDefault(); });
+
+const onSearch = debounce(() => {
+  state.q = $('#q').value.trim();
+  if (current !== 'memory') location.hash = '#/memory'; else loadResults();
+}, 180);
+$('#q').addEventListener('input', onSearch);
+$('#q').addEventListener('keydown', e => { if (e.key === 'Escape') { $('#q').value = ''; onSearch(); } });
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#drawer').classList.contains('open')) closeDrawer();
+  if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('#q').focus(); }
+});
+
+route();
+</script>
+</body>
+</html>

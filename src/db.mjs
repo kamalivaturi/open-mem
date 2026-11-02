@@ -24,7 +24,7 @@ export const DEFAULTS = {
   skipTools: ['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'ToolSearch'],
   obsidianDir: null,                // write session notes here, e.g. "C:\\Vault\\claude\\open-mem"
   vaultDir: null,                   // index this whole vault; Claude searches it via vault_search
-  vaultExclude: [],                 // vault folders never indexed, e.g. ["me/journal", "private"]
+  vaultExclude: [],                 // vault folders never indexed, e.g. ["journal", "private"]
   contextNotes: 5,                  // related vault notes listed at session start
   recordClaudeHistory: true,        // archive Claude Code + Claude Desktop sessions from their transcripts
   recordScheduledTasks: true,       // registry of Claude Desktop / Cowork scheduled tasks

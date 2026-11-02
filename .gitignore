@@ -4,3 +4,4 @@ node_modules/
 *.db-shm
 *.log
 .open-mem-test*/
+.impeccable/

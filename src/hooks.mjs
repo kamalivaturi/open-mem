@@ -13,6 +13,9 @@ export function spawnDrain() {
   spawn(process.execPath, [BIN, 'drain'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
 }
 
+// Redact the full text before clipping: clipping first can cut a secret short enough to slip past the patterns.
+const text = v => (typeof v === 'string' ? v : JSON.stringify(v) ?? '');
+
 const skipped = (tool, s) =>
   (tool.startsWith('mcp__') && tool.includes('open-mem')) ||
   s.skipTools.some(p => (p.endsWith('*') ? tool.startsWith(p.slice(0, -1)) : tool === p));
@@ -22,8 +25,10 @@ export function renderContext(db, project, s) {
   const sums = db.prepare('SELECT * FROM summaries WHERE project = ? ORDER BY created_at DESC LIMIT ?').all(project, s.contextSummaries);
   const obs = db.prepare('SELECT id, type, title, created_at FROM observations WHERE project = ? ORDER BY created_at DESC, id DESC LIMIT ?')
     .all(project, s.contextObservations);
-  // Vault notes that mention this project, best match first.
-  const notes = s.contextNotes ? searchNotes(db, project, null, s.contextNotes) : [];
+  // Vault notes that mention this project, best match first. Words under 3 characters (e.g. "C" for C:\)
+  // would prefix-match almost every note, so they are not searched.
+  const terms = (project.match(/[\p{L}\p{N}_]{3,}/gu) || []).join(' ');
+  const notes = s.contextNotes && terms ? searchNotes(db, terms, null, s.contextNotes) : [];
   if (!sums.length && !obs.length && !notes.length) return '';
   const out = [`# open-mem: memory from earlier sessions in "${project}"`,
     'Search deeper with the open-mem MCP tools: search -> timeline -> get_observations (fetch full details only for ids you need).'];
@@ -68,7 +73,7 @@ export function handleHook(input, s = settings(), db = open()) {
       if (skipped(tool, s)) return '';
       db.prepare('INSERT INTO events (session_id, project, tool, input, output, cwd, created_at) VALUES (?,?,?,?,?,?,?)').run(
         input.session_id, project, tool,
-        redact(clip(input.tool_input, 2000)), redact(clip(input.tool_response, 3000)), input.cwd || '', now);
+        clip(redact(text(input.tool_input)), 2000), clip(redact(text(input.tool_response)), 3000), input.cwd || '', now);
       const { n } = db.prepare('SELECT COUNT(*) n FROM events WHERE done = 0 AND session_id = ?').get(input.session_id);
       if (n >= s.batchSize) spawnDrain();
       return '';

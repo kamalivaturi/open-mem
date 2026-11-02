@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HOME, DEFAULTS, open, settings, search, timeline, getObservations, hydrate } from './db.mjs';
-import { complete, embed, ping } from './llm.mjs';
+import { complete, embed, embedQuery, ping } from './llm.mjs';
 import { drain, withLock } from './observer.mjs';
 import { ingestVault, watchVault } from './vault.mjs';
 
@@ -51,7 +51,7 @@ function saveSettings(body) {
     if (!(k in body)) continue;
     let v = body[k];
     if (k === 'openaiApiKey' && v === MASK) continue;
-    if (typeof def === 'number') v = Number(v) || def;
+    if (typeof def === 'number') v = v === '' || v == null || !Number.isFinite(Number(v)) ? def : Number(v);   // 0 is a valid value
     else if (Array.isArray(def)) v = Array.isArray(v) ? v : String(v).split(',').map(x => x.trim()).filter(Boolean);
     else v = v === '' || v == null ? (def === null ? null : '') : String(v);
     next[k] = v;
@@ -136,7 +136,7 @@ export function createServer(db = open()) {
       }
       if (p === '/api/stats') return send(200, stats(db));
       if (p === '/api/search') {
-        const vec = q.q ? (await embed([q.q], s))?.[0] : null;
+        const vec = await embedQuery(q.q, s);
         return send(200, { hybrid: !!vec, results: search(db, { query: q.q, project: q.project, type: q.type, days: Number(q.days) || 0, limit: Number(q.limit) || 100 }, vec) });
       }
       let m;
@@ -172,7 +172,9 @@ export function createServer(db = open()) {
       if (p === '/api/models') return send(200, await models(s));
       if (p === '/api/vault' && req.method === 'POST') return send(200, await linkVault(db, await body(req)));
       if (p === '/api/vault' && req.method === 'DELETE') {
-        saveSettings({ vaultDir: null });
+        // Also stop exporting session notes when the export folder lives inside the unlinked vault.
+        const rel = s.vaultDir && s.obsidianDir ? path.relative(s.vaultDir, s.obsidianDir) : '..';
+        saveSettings({ vaultDir: null, ...(!rel.startsWith('..') && !path.isAbsolute(rel) ? { obsidianDir: null } : {}) });
         db.exec('DELETE FROM notes');
         restartWatcher(db);
         return send(200, { unlinked: true });

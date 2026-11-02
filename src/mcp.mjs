@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import readline from 'node:readline';
 import { ingestVault, searchNotes } from './vault.mjs';
 import { open, settings, search, timeline, getObservations, insertObservation, embedText, projectOf, TYPES, ICONS, fmtDate } from './db.mjs';
-import { embed } from './llm.mjs';
+import { embed, embedQuery } from './llm.mjs';
 import { redact } from './redact.mjs';
 
 const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -52,7 +52,7 @@ const TOOLS = [
 const line = o => `#${o.id}  ${fmtDate(o.created_at)}  ${ICONS[o.type] || '•'} ${o.type.padEnd(13)} [${o.project}] ${o.title}`;
 
 export async function callTool(name, a = {}, db = open(), s = settings()) {
-  const qvec = a.query ? (await embed([a.query], s))?.[0] : null;
+  const qvec = await embedQuery(a.query, s);
   switch (name) {
     case 'search': {
       const rows = search(db, { ...a, limit: a.limit || 20 }, qvec);

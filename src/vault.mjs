@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ftsQuery, cosine, toVec, tx } from './db.mjs';
+import { ftsQuery, nearest, fuse, tx } from './db.mjs';
 
 const MAX_BODY = 50_000;
 
@@ -11,7 +11,10 @@ function parseNote(file, text) {
   const meta = fm?.[1] || '';
   const body = (fm ? text.slice(fm[0].length) : text).slice(0, MAX_BODY);
   const title = meta.match(/^title:\s*["']?(.+?)["']?\s*$/m)?.[1] || body.match(/^#\s+(.+)$/m)?.[1]?.trim() || path.basename(file, '.md');
-  const fmTags = meta.match(/^tags:\s*\[(.*)\]/m)?.[1]?.split(',') ?? [...meta.matchAll(/^\s*-\s+(\S+)/gm)].map(m => m[1]);
+  // Only the `tags:` key: inline array, block list, or space/comma-separated scalar.
+  const fmTags = meta.match(/^tags:[ \t]*\[(.*)\][ \t]*$/m)?.[1].split(',')
+    ?? meta.match(/^tags:[ \t]*\r?\n((?:[ \t]*-[ \t]+.*(?:\r?\n|$))+)/m)?.[1].split(/\r?\n/).map(l => l.replace(/^[ \t]*-[ \t]+/, ''))
+    ?? meta.match(/^tags:[ \t]*(\S.*)$/m)?.[1].split(/[\s,]+/) ?? [];
   const inline = [...body.matchAll(/(?:^|\s)#([\p{L}\p{N}_/-]+)/gu)].map(m => m[1]);
   const tags = [...new Set([...fmTags, ...inline].map(t => t.trim().replace(/^["'#]|["']$/g, '')).filter(Boolean))].join(' ');
   return { title, tags, body };
@@ -92,16 +95,12 @@ export async function ingestVault(db, s, embed = null) {
 export function searchNotes(db, query, queryVec = null, limit = 10) {
   const fq = ftsQuery(query || '');
   if (!fq) return [];
-  const score = new Map(), rows = new Map();
-  db.prepare(`SELECT n.id, n.path, n.title, n.tags, snippet(notes_fts, 2, '«', '»', ' … ', 24) snippet
-    FROM notes_fts JOIN notes n ON n.id = notes_fts.rowid WHERE notes_fts MATCH ? ORDER BY bm25(notes_fts, 5, 2, 1) LIMIT 100`)
-    .all(fq).forEach((r, i) => { rows.set(r.id, r); score.set(r.id, 1 / (60 + i)); });
-  if (queryVec) {
-    db.prepare('SELECT id, path, title, tags, substr(body, 1, 240) snippet, embedding FROM notes WHERE embedding IS NOT NULL').all()
-      .map(r => ({ r, s: cosine(queryVec, toVec(r.embedding)) })).filter(x => x.s > 0.35).sort((a, b) => b.s - a.s).slice(0, 100)
-      .forEach(({ r }, i) => { delete r.embedding; if (!rows.has(r.id)) rows.set(r.id, r); score.set(r.id, (score.get(r.id) || 0) + 1 / (60 + i)); });
-  }
-  return [...score].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => rows.get(id));
+  const fts = db.prepare(`SELECT n.id, n.path, n.title, n.tags, snippet(notes_fts, 2, '«', '»', ' … ', 24) snippet
+    FROM notes_fts JOIN notes n ON n.id = notes_fts.rowid WHERE notes_fts MATCH ? ORDER BY bm25(notes_fts, 5, 2, 1) LIMIT 100`).all(fq);
+  const vec = queryVec
+    ? nearest(db.prepare('SELECT id, path, title, tags, substr(body, 1, 240) snippet, embedding FROM notes WHERE embedding IS NOT NULL').all(), queryVec, 0.35)
+    : [];
+  return fuse([fts, vec], limit);
 }
 
 // Live watcher: re-index (incrementally) a moment after any markdown file changes.

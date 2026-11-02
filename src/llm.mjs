@@ -6,12 +6,12 @@ import path from 'node:path';
 
 const TIMEOUT = 180_000;
 
-async function post(url, body, headers = {}) {
+async function post(url, body, headers = {}, timeout = TIMEOUT) {
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT),
+    signal: AbortSignal.timeout(timeout),
   });
   if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
   return r.json();
@@ -97,12 +97,15 @@ export async function ping(s) {
 
 // Embeddings come from Ollama whatever the observer provider is. Returns null when unavailable,
 // so search silently degrades to keyword-only.
-export async function embed(texts, s) {
+export async function embed(texts, s, timeout = 120_000) {
   if (!s.embedModel || !texts.length) return null;
   try {
-    const j = await post(`${s.ollamaUrl}/api/embed`, { model: s.embedModel, input: texts });
+    const j = await post(`${s.ollamaUrl}/api/embed`, { model: s.embedModel, input: texts }, {}, timeout);
     return j.embeddings ?? null;
   } catch {
     return null;
   }
 }
+
+// One search query's vector, with a short timeout so a slow Ollama never stalls search.
+export const embedQuery = async (query, s) => (query ? (await embed([query], s, 5000))?.[0] ?? null : null);

@@ -109,12 +109,12 @@ async function observeBatch(db, s, deps, sessionId) {
   return added;
 }
 
+// Re-summarize only when the session gained observations since the last summary: Stop fires after
+// every turn, and prompts alone (no tool work) would just reproduce the same summary.
 async function summarize(db, s, deps, sess) {
-  const since = sess.summarized_at || 0;
-  const fresh = db.prepare(`SELECT (SELECT COUNT(*) FROM observations WHERE session_id = ?1 AND created_at > ?2)
-    + (SELECT COUNT(*) FROM prompts WHERE session_id = ?1 AND created_at > ?2) n`).get(sess.id, since).n;
-  const mark = () => db.prepare('UPDATE sessions SET summarized_at = ? WHERE id = ?').run(Date.now(), sess.id);
-  if (!fresh) return mark(), false;
+  const newest = db.prepare('SELECT MAX(id) n FROM observations WHERE session_id = ?').get(sess.id).n || 0;
+  const mark = () => db.prepare('UPDATE sessions SET summarized_at = ?, summarized_obs = ? WHERE id = ?').run(Date.now(), newest, sess.id);
+  if (newest <= sess.summarized_obs) return mark(), false;
   const prompts = db.prepare('SELECT text FROM prompts WHERE session_id = ? ORDER BY id').all(sess.id);
   const ids = db.prepare('SELECT id FROM observations WHERE session_id = ? ORDER BY id').all(sess.id).map(r => r.id);
   const observations = getObservations(db, ids);
@@ -155,9 +155,11 @@ export async function drain(db, s, deps = llm) {
 // ponytail: an event that lands as the holder exits waits for the next hook to trigger a drain.
 export async function withLock(fn) {
   const file = path.join(HOME, 'drain.lock');
+  fs.mkdirSync(HOME, { recursive: true });
   try {
     fs.writeFileSync(file, String(process.pid), { flag: 'wx' });
-  } catch {
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;   // only an existing lock means "someone else is draining"
     let pid = 0;
     try { pid = Number(fs.readFileSync(file, 'utf8')); } catch { return withLock(fn); }
     try { process.kill(pid, 0); return null; } catch { fs.rmSync(file, { force: true }); return withLock(fn); }

@@ -485,6 +485,7 @@ async function dashboard() {
   ];
   view.innerHTML = `
     <h1>Dashboard</h1><p class="lede">What open-mem remembers for Claude across sessions.</p>
+    ${settings.settingsError ? `<div class="banner err"><span>⚠</span><div>${h(settings.settingsError)}</div></div>` : ''}
     ${s.lastDrain?.error ? `<div class="banner err"><span>⚠</span><div><b>Last processing run failed ${h(ago(s.lastDrain.at))}.</b> ${/not found/.test(s.lastDrain.error) && settings.provider === 'ollama'
       ? `Install the model: <code>ollama pull ${h(settings.model)}</code>, or pick another provider in <a href="#/settings">Settings</a>.`
       : `Run a check in <a href="#/settings">Settings</a>.`}<br><code>${h(s.lastDrain.error.slice(0, 300))}</code></div></div>` : ''}

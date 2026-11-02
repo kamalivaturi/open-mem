@@ -31,12 +31,20 @@ export const DEFAULTS = {
 
 export function settings() {
   const file = path.join(HOME, 'settings.json');
+  let raw;
   try {
-    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    raw = fs.readFileSync(file, 'utf8');
   } catch {
     fs.mkdirSync(HOME, { recursive: true });
-    if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(DEFAULTS, null, 2));
+    fs.writeFileSync(file, JSON.stringify(DEFAULTS, null, 2));
     return { ...DEFAULTS };
+  }
+  try {
+    return { ...DEFAULTS, ...JSON.parse(raw) };
+  } catch (e) {
+    // Never silently drop the user's configuration: log it and surface it in the GUI.
+    fs.appendFileSync(path.join(HOME, 'open-mem.log'), `${new Date().toISOString()} settings.json is invalid, using defaults: ${e.message}\n`);
+    return { ...DEFAULTS, settingsError: `settings.json is invalid (${e.message}); using defaults until it is fixed or saved again.` };
   }
 }
 
@@ -95,6 +103,10 @@ export function open(file = path.join(HOME, 'open-mem.db')) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  // Added after 0.1.0 schema: id of the newest observation covered by the session's summary.
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'summarized_obs'").get()) {
+    db.exec('ALTER TABLE sessions ADD COLUMN summarized_obs INTEGER NOT NULL DEFAULT 0');
+  }
   return db;
 }
 
@@ -153,16 +165,27 @@ export function search(db, opts = {}, queryVec = null) {
     return db.prepare(`SELECT ${cols} FROM observations o WHERE 1=1${f.sql} ORDER BY o.created_at DESC LIMIT ?`)
       .all(...f.args, limit);
   }
-  const score = new Map(), rows = new Map();
   const fts = db.prepare(`SELECT ${cols} FROM observations_fts JOIN observations o ON o.id = observations_fts.rowid
     WHERE observations_fts MATCH ?${f.sql} ORDER BY bm25(observations_fts) LIMIT 100`).all(fq, ...f.args);
-  fts.forEach((r, i) => { rows.set(r.id, r); score.set(r.id, 1 / (60 + i)); });
-  if (queryVec) {
-    // ponytail: brute-force cosine over all embeddings; fine to ~50k observations, add sqlite-vec beyond that.
-    const vec = db.prepare(`SELECT ${cols}, o.embedding FROM observations o WHERE o.embedding IS NOT NULL${f.sql}`).all(...f.args)
-      .map(r => ({ r, s: cosine(queryVec, toVec(r.embedding)) }))
-      .filter(x => x.s > 0.3).sort((a, b) => b.s - a.s).slice(0, 100);
-    vec.forEach(({ r }, i) => { delete r.embedding; rows.set(r.id, r); score.set(r.id, (score.get(r.id) || 0) + 1 / (60 + i)); });
+  const vec = queryVec
+    ? nearest(db.prepare(`SELECT ${cols}, o.embedding FROM observations o WHERE o.embedding IS NOT NULL${f.sql}`).all(...f.args), queryVec, 0.3)
+    : [];
+  return fuse([fts, vec], limit);
+}
+
+// Rows ranked by cosine similarity of their embedding to queryVec (embedding column dropped).
+// ponytail: brute-force scan; fine to ~50k rows, add sqlite-vec beyond that.
+export function nearest(rows, queryVec, minScore) {
+  return rows.map(r => ({ r, s: cosine(queryVec, toVec(r.embedding)) }))
+    .filter(x => x.s > minScore).sort((a, b) => b.s - a.s).slice(0, 100)
+    .map(({ r }) => { delete r.embedding; return r; });
+}
+
+// Reciprocal rank fusion of ranked lists keyed by row id; the first list's copy of a row wins.
+export function fuse(lists, limit) {
+  const score = new Map(), rows = new Map();
+  for (const list of lists) {
+    list.forEach((r, i) => { if (!rows.has(r.id)) rows.set(r.id, r); score.set(r.id, (score.get(r.id) || 0) + 1 / (60 + i)); });
   }
   return [...score].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => rows.get(id));
 }

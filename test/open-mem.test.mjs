@@ -131,6 +131,54 @@ test('vault ingest: incremental, deduplicated, exclusions, deletions, context', 
   assert.match(ctx, /Related notes in your Obsidian vault[\s\S]*Demo roadmap \(Projects\/demo plan\.md\)/);
 });
 
+test('regressions from code review', async () => {
+  const { withLock } = await import('../src/observer.mjs');
+  // drain on a fresh install (data folder missing) must not recurse forever
+  const fresh = spawn(process.execPath, ['--no-warnings', BIN, 'drain'], { env: { ...process.env, OPEN_MEM_HOME: path.join(TMP, 'fresh-home') } });
+  let out = '';
+  fresh.stdout.on('data', d => (out += d)); fresh.stderr.on('data', d => (out += d));
+  assert.equal(await new Promise(r => fresh.on('close', r)), 0, out);
+  assert.equal(await withLock(async () => 'ran'), 'ran');
+
+  // tool output is redacted before clipping, so a key at the clip boundary can't leak in part
+  const db = open(), s = { ...settings(), batchSize: 99 };
+  const key = 'sk-ant-' + 'x'.repeat(40);
+  handleHook({ session_id: 'sess-clip', cwd: TMP, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: {}, tool_response: `${'a'.repeat(2068)} ANTHROPIC_KEY=${key} ${'b'.repeat(2000)}` }, s, db);   // clip cuts 17 chars into the key
+  assert.ok(!db.prepare("SELECT output FROM events WHERE session_id = 'sess-clip'").get().output.includes('sk-ant-x'));
+
+  // a prompt-only turn does not trigger another summary call
+  let calls = 0;
+  const counting = { complete: async p => (calls++, p.includes('<summary>') ? '<summary><request>r</request></summary>' : '<none/>'), embed: async () => null };
+  db.prepare("UPDATE events SET done = 1 WHERE session_id = 'sess-clip'").run();
+  db.prepare("UPDATE sessions SET summarize_at = ? WHERE id = 'sess-0001-abcd'").run(Date.now() + 1000);
+  handleHook({ session_id: 'sess-0001-abcd', cwd: path.join(TMP, 'demo'), hook_event_name: 'UserPromptSubmit', prompt: 'thanks!' }, s, db);
+  await drain(db, s, counting);
+  assert.equal(calls, 0, 'no new observations -> no new summary');
+
+  // only the tags: key becomes tags; numeric settings accept 0; unlinking a vault stops the export into it
+  const { ingestVault, searchNotes } = await import('../src/vault.mjs');
+  const v = path.join(TMP, 'TagVault');
+  fs.mkdirSync(v, { recursive: true });
+  fs.writeFileSync(path.join(v, 'n.md'), '---\naliases:\n  - Old name\ntags:\n  - alpha\n  - beta\n---\n# Tagged note\nbody');
+  await ingestVault(db, { ...s, vaultDir: v, obsidianDir: null });
+  assert.equal(searchNotes(db, 'Tagged')[0].tags, 'alpha beta');
+
+  const srv = createServer(db);
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${srv.address().port}`, H = { 'x-open-mem': '1' };
+  try {
+    const saved = await (await fetch(`${base}/api/settings`, { method: 'PUT', headers: H, body: JSON.stringify({ contextNotes: 0 }) })).json();
+    assert.equal(saved.contextNotes, 0);
+    await fetch(`${base}/api/vault`, { method: 'POST', headers: H, body: JSON.stringify({ vaultDir: v, exportNotes: true }) });
+    await fetch(`${base}/api/vault`, { method: 'DELETE', headers: H });
+    const after = settings();
+    assert.equal(after.vaultDir, null);
+    assert.equal(after.obsidianDir, null, 'export into the unlinked vault stops');
+  } finally {
+    srv.close();
+  }
+});
+
 test('MCP server speaks JSON-RPC over stdio', async () => {
   const p = spawn(process.execPath, ['--no-warnings', BIN, 'mcp'], { env: { ...process.env, OPEN_MEM_HOME: TMP } });
   const replies = [];

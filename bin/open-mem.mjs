@@ -42,10 +42,9 @@ const commands = {
   },
 
   async search() {
-    const { embed } = await import('../src/llm.mjs');
+    const { embedQuery } = await import('../src/llm.mjs');
     const query = positional().join(' ');
-    const s = settings();
-    const vec = query ? (await embed([query], s))?.[0] : null;
+    const vec = await embedQuery(query, settings());
     const rows = search(open(), { query, project: flag('project'), type: flag('type'), limit: Number(flag('limit')) || 20 }, vec);
     if (!rows.length) return console.log('No matching memories.');
     for (const o of rows) console.log(`#${o.id}  ${fmtDate(o.created_at)}  ${ICONS[o.type] || '•'} ${o.type.padEnd(13)} [${o.project}] ${o.title}`);

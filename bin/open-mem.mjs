@@ -6,6 +6,7 @@ import { HOME, open, settings, search, fmtDate, ICONS } from '../src/db.mjs';
 
 const [cmd = 'help', ...args] = process.argv.slice(2);
 const flag = name => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] ?? true : undefined; };
+const report = r => `${r.scanned} scanned, ${r.added} added, ${r.updated} updated, ${r.removed} removed${r.duplicates ? `, ${r.duplicates} duplicates skipped` : ''}`;
 const positional = () => args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
 
 async function readStdin() {
@@ -67,16 +68,33 @@ drain running  ${fs.existsSync(path.join(HOME, 'drain.lock')) ? 'yes' : 'no'}`);
     const s = settings();
     if (flag('dir')) s.vaultDir = path.resolve(flag('dir'));
     if (!s.vaultDir) return console.log('Link a vault in the GUI, set vaultDir in settings, or pass --dir <vault>.');
-    const { ingestVault, watchVault } = await import('../src/vault.mjs');
+    const { ingest, watch } = await import('../src/ingest.mjs');
+    const { vaultSource } = await import('../src/sources.mjs');
     const { embed } = await import('../src/llm.mjs');
-    const db = open();
-    const r = await ingestVault(db, s, embed);
-    console.log(`${s.vaultDir}: ${r.scanned} notes scanned, ${r.added} added, ${r.updated} updated, ${r.removed} removed, ${r.duplicates} duplicates skipped`);
+    const db = open(), src = vaultSource(s);
+    console.log(`${s.vaultDir}: ${report(await ingest(db, src, embed, s))}`);
     if (flag('watch')) {
       console.log('Watching for changes (Ctrl+C to stop)…');
-      watchVault(db, s, embed, x => x.error ? console.error(x.error) : (x.added || x.updated || x.removed) &&
+      watch(db, src, s.vaultDir, embed, s, x => x.error ? console.error(x.error) : (x.added || x.updated || x.removed) &&
         console.log(`${new Date().toLocaleTimeString()} +${x.added} ~${x.updated} -${x.removed}`));
     }
+  },
+
+  async sync() {
+    const { ingestAll } = await import('../src/sources.mjs');
+    const { embed } = await import('../src/llm.mjs');
+    for (const [name, r] of Object.entries(await ingestAll(open(), settings(), embed))) console.log(`${name.padEnd(24)} ${r.error ? `error: ${r.error}` : report(r)}`);
+    console.log('Run `open-mem drain` to write purpose and intention for new projects and tasks.');
+  },
+
+  async 'import-chat'() {
+    const file = positional()[0];
+    if (!file) return console.log('Usage: open-mem import-chat <conversations.json>  (claude.ai: Settings -> Privacy -> Export data)');
+    const { ingest } = await import('../src/ingest.mjs');
+    const { chatExportSource } = await import('../src/sources.mjs');
+    const { embed } = await import('../src/llm.mjs');
+    const s = settings();
+    console.log(`claude.ai chats: ${report(await ingest(open(), chatExportSource(path.resolve(file)), embed, s))}`);
   },
 
   async 'export-obsidian'() {
@@ -100,6 +118,8 @@ drain running  ${fs.existsSync(path.join(HOME, 'drain.lock')) ? 'yes' : 'no'}`);
   open-mem search <query> [--project p] [--type t] [--limit n]
   open-mem status                      counts, queue and configuration
   open-mem drain                       process queued tool calls now
+  open-mem sync                        record Claude history, scheduled tasks, projects and the vault now
+  open-mem import-chat <file>          import a claude.ai export (conversations.json)
   open-mem ingest-vault [--dir v] [--watch]  index an Obsidian vault as memory (and keep watching)
   open-mem export-obsidian [--dir d]   write all session notes to an Obsidian folder
   open-mem mcp                         MCP server (started by Claude Code)

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { HOME, TYPES, ICONS, insertObservation, embedText, getObservations, cosine, toVec, tx } from './db.mjs';
 import * as llm from './llm.mjs';
-import { ingestVault } from './vault.mjs';
+import { ingestAll } from './sources.mjs';
 
 export const log = msg => fs.appendFileSync(path.join(HOME, 'open-mem.log'), `${new Date().toISOString()} ${msg}\n`);
 
@@ -130,18 +130,54 @@ async function summarize(db, s, deps, sess) {
   return true;
 }
 
+// "Purpose and intention" for projects and scheduled tasks, written by the observer from the item's
+// own material (README/CLAUDE.md, task prompt) plus what open-mem remembers about the project.
+// Re-written only when the item's content changes; a few per run so a first sync stays cheap.
+export function purposePrompt(item, memory, language) {
+  const what = item.kind === 'project' ? 'software project' : 'scheduled AI task';
+  return `Describe the purpose and intention of this ${what} for an AI assistant that will work with it later.
+Use only the material below. Write in ${language}, 120-250 words, as plain prose under these labels:
+Purpose: what it is and what it does.
+Intention: why it exists and what outcome it is meant to achieve.
+How it works: key mechanics${item.kind === 'project' ? ', stack and structure' : ', schedule and steps'}.
+Status: what is known about its current state.
+Output only: <purpose>...</purpose>
+
+Title: ${esc(item.title)}
+${esc(item.body.slice(0, 9000))}
+${memory ? `\nWhat past sessions recorded about it:\n${esc(memory)}` : ''}`;
+}
+
+async function describeItems(db, s, deps, max = 5) {
+  const rows = db.prepare(`SELECT * FROM items WHERE kind IN ('project', 'task') AND missing_at IS NULL
+    AND (purpose_hash IS NULL OR purpose_hash != hash) ORDER BY updated_at DESC LIMIT ?`).all(max);
+  let done = 0;
+  for (const r of rows) {
+    const memory = r.kind === 'project' && r.project ? [
+      ...db.prepare('SELECT request, completed, next_steps FROM summaries WHERE project = ? ORDER BY created_at DESC LIMIT 3').all(r.project)
+        .map(x => `Session: ${x.request} -> ${x.completed} (next: ${x.next_steps})`),
+      ...db.prepare('SELECT type, title FROM observations WHERE project = ? ORDER BY created_at DESC LIMIT 15').all(r.project).map(o => `- [${o.type}] ${o.title}`),
+    ].join('\n') : '';
+    const out = await deps.complete(purposePrompt(r, memory, s.language), s);
+    const purpose = tag(out, 'purpose') || out.trim();
+    if (!purpose) continue;
+    db.prepare('UPDATE items SET purpose = ?, purpose_hash = ? WHERE id = ?').run(purpose.slice(0, 4000), r.hash, r.id);
+    done++;
+  }
+  return done;
+}
+
 // Drain all pending work. Stops at the first model error and leaves the rest queued for the next run.
 export async function drain(db, s, deps = llm) {
-  const stats = { observations: 0, summaries: 0 };
-  if (s.vaultDir) {
-    try { stats.vault = await ingestVault(db, s, deps.embed); } catch (e) { log(`vault index failed: ${e.message}`); }
-  }
+  const stats = { observations: 0, summaries: 0, described: 0 };
+  stats.sources = await ingestAll(db, s, deps.embed);   // vault, Claude history, scheduled tasks, projects
   try {
     for (let next; (next = db.prepare('SELECT session_id FROM events WHERE done = 0 ORDER BY id LIMIT 1').get());) {
       stats.observations += await observeBatch(db, s, deps, next.session_id);
     }
     const due = db.prepare('SELECT * FROM sessions WHERE summarize_at IS NOT NULL AND (summarized_at IS NULL OR summarized_at < summarize_at)').all();
     for (const sess of due) stats.summaries += (await summarize(db, s, deps, sess)) ? 1 : 0;
+    stats.described = await describeItems(db, s, deps);
   } catch (e) {
     log(`drain stopped: ${e.message}`);
     stats.error = e.message;

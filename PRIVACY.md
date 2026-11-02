@@ -29,6 +29,20 @@ It also keeps `settings.json` (your configuration, including an API key if you e
 
 open-mem does **not** collect your name, email, IP address, location, device identifiers or usage statistics.
 
+### Claude history, scheduled tasks and projects (on by default, each can be switched off)
+
+To remember your past work, open-mem also **reads** files that Claude itself keeps on your computer. It never changes or deletes them.
+
+| Read from | What open-mem keeps | Setting |
+|---|---|---|
+| Claude Code transcripts (`~/.claude/projects/*/*.jsonl`), also used by the Claude Desktop Code tab | Your prompts and Claude's written replies, redacted and shortened. Never Claude's hidden reasoning, tool output or subagent chatter. Automated background runs (one untitled prompt nobody typed) keep only the folder they ran in, no text. | `recordClaudeHistory` |
+| Claude Desktop session list (`claude-code-sessions/*/local_*.json`) | Session title and model name | `recordClaudeHistory` |
+| Claude Desktop and Cowork scheduled tasks (`scheduled-tasks.json` and each task's prompt file) | Title, schedule, enabled state, description and prompt, redacted | `recordScheduledTasks` |
+| Project folders Claude worked in | Folder path, git remote (credentials removed) and the start of README / CLAUDE.md / AGENTS.md / package.json | `recordProjects` |
+| A claude.ai export you choose to import (`open-mem import-chat`) | Conversation titles, your messages and Claude's replies, redacted and shortened | n/a (manual) |
+
+Because open-mem is meant to be your long-term memory, sessions and tasks stay in it after Claude deletes its own copies (Claude Code removes old transcripts after about 30 days). They're marked "deleted at source". Delete them from open-mem the same way as anything else.
+
 ## What leaves your machine
 
 open-mem itself makes network requests only to the destinations you configure:
@@ -40,7 +54,7 @@ open-mem itself makes network requests only to the destinations you configure:
 | `provider: "openai"` | The OpenAI-compatible service you configure (for example OpenRouter, Google Gemini or Groq), under that provider's own terms and privacy policy. |
 | `embedModel` | Your Ollama server, for semantic search. |
 
-What is sent: batches of redacted tool calls with your latest prompt (to write memories), and your prompts plus existing memories for a session (to write its summary). Please read the privacy terms of any third-party provider you choose, and prefer Ollama when your work is sensitive.
+What is sent: batches of redacted tool calls with your latest prompt (to write memories); your prompts plus existing memories for a session (to write its summary); and, to write a project's or scheduled task's "purpose and intention", that project's README / CLAUDE.md excerpt or the task's prompt plus the titles of related memories. Recorded Claude history is **not** sent to the observer; it stays local and is only searched. Please read the privacy terms of any third-party provider you choose, and prefer Ollama when your work is sensitive.
 
 Claude Code itself already sends your conversation to Anthropic as part of normal use. open-mem doesn't change that. It only adds the start-of-session memory text to the context Claude Code sends.
 

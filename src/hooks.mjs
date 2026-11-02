@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { open, settings, projectOf, ICONS, fmtDate } from './db.mjs';
 import { redact, clip } from './redact.mjs';
-import { searchNotes } from './vault.mjs';
+import { searchItems } from './ingest.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/open-mem.mjs', import.meta.url));
 
@@ -28,10 +28,13 @@ export function renderContext(db, project, s) {
   // Vault notes that mention this project, best match first. Words under 3 characters (e.g. "C" for C:\)
   // would prefix-match almost every note, so they are not searched.
   const terms = (project.match(/[\p{L}\p{N}_]{3,}/gu) || []).join(' ');
-  const notes = s.contextNotes && terms ? searchNotes(db, terms, null, s.contextNotes) : [];
-  if (!sums.length && !obs.length && !notes.length) return '';
+  const notes = s.contextNotes && terms ? searchItems(db, terms, { kinds: ['note'], limit: s.contextNotes }) : [];
+  const about = db.prepare("SELECT purpose FROM items WHERE kind = 'project' AND project = ? AND purpose IS NOT NULL AND missing_at IS NULL LIMIT 1").get(project);
+  if (!sums.length && !obs.length && !notes.length && !about) return '';
   const out = [`# open-mem: memory from earlier sessions in "${project}"`,
-    'Search deeper with the open-mem MCP tools: search -> timeline -> get_observations (fetch full details only for ids you need).'];
+    'Search deeper with the open-mem MCP tools: search -> timeline -> get_observations (fetch full details only for ids you need);',
+    'past_sessions, projects and scheduled_tasks cover all Claude history; vault_search covers the Obsidian vault.'];
+  if (about) out.push('', '## About this project', about.purpose);
   for (const m of sums) {
     out.push('', `## Session ${fmtDate(m.created_at)}`);
     for (const [k, label] of [['request', 'Request'], ['completed', 'Completed'], ['learned', 'Learned'], ['next_steps', 'Next steps'], ['notes', 'Notes']]) {
@@ -44,7 +47,7 @@ export function renderContext(db, project, s) {
   }
   if (notes.length) {
     out.push('', '## Related notes in your Obsidian vault (vault_search for more)');
-    for (const n of notes) out.push(`- ${n.title} (${n.path.replace(/\\/g, '/')})`);
+    for (const n of notes) out.push(`- ${n.title} (${n.meta.path})`);
   }
   return out.join('\n');
 }
@@ -58,8 +61,9 @@ export function handleHook(input, s = settings(), db = open()) {
 
   switch (input.hook_event_name) {
     case 'SessionStart': {
-      // Leftovers from a crashed session, and a fresh incremental scan of the Obsidian vault.
-      if (s.vaultDir || db.prepare('SELECT 1 FROM events WHERE done = 0 LIMIT 1').get()) spawnDrain();
+      // Background run: leftovers from a crashed session plus an incremental sync of every source
+      // (vault, Claude history, scheduled tasks, projects). Unchanged items cost one stat() each.
+      spawnDrain();
       return renderContext(db, project, s);
     }
     case 'UserPromptSubmit':

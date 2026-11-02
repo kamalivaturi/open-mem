@@ -26,6 +26,12 @@ export const DEFAULTS = {
   vaultDir: null,                   // index this whole vault; Claude searches it via vault_search
   vaultExclude: [],                 // vault folders never indexed, e.g. ["me/journal", "private"]
   contextNotes: 5,                  // related vault notes listed at session start
+  recordClaudeHistory: true,        // archive Claude Code + Claude Desktop sessions from their transcripts
+  recordScheduledTasks: true,       // registry of Claude Desktop / Cowork scheduled tasks
+  recordProjects: true,             // registry of projects Claude has worked in, with purpose and intention
+  projectIgnoreTemp: true,          // never register temp, scratch or app-data folders as projects
+  claudeHome: null,                 // override ~/.claude
+  claudeAppData: null,              // override the Claude desktop app's data folder
   viewerPort: 37778,
 };
 
@@ -82,18 +88,22 @@ CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
 CREATE TRIGGER IF NOT EXISTS obs_ai AFTER INSERT ON observations BEGIN
   INSERT INTO observations_fts(rowid, title, subtitle, narrative, facts, concepts)
   VALUES (new.id, new.title, new.subtitle, new.narrative, new.facts, new.concepts); END;
-CREATE TABLE IF NOT EXISTS notes(
-  id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, hash TEXT NOT NULL, mtime INTEGER NOT NULL,
-  title TEXT NOT NULL, tags TEXT, body TEXT NOT NULL, indexed_at INTEGER NOT NULL, embedding BLOB);
-CREATE INDEX IF NOT EXISTS notes_hash ON notes(hash);
-CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, tags, body, content='notes', content_rowid='id');
-CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
-  INSERT INTO notes_fts(rowid, title, tags, body) VALUES (new.id, new.title, new.tags, new.body); END;
-CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
-  INSERT INTO notes_fts(notes_fts, rowid, title, tags, body) VALUES ('delete', old.id, old.title, old.tags, old.body); END;
-CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
-  INSERT INTO notes_fts(notes_fts, rowid, title, tags, body) VALUES ('delete', old.id, old.title, old.tags, old.body);
-  INSERT INTO notes_fts(rowid, title, tags, body) VALUES (new.id, new.title, new.tags, new.body); END;
+CREATE TABLE IF NOT EXISTS items(
+  id INTEGER PRIMARY KEY, source TEXT NOT NULL, kind TEXT NOT NULL, key TEXT NOT NULL,
+  stamp TEXT NOT NULL, hash TEXT NOT NULL, title TEXT NOT NULL, tags TEXT, body TEXT NOT NULL, meta TEXT,
+  project TEXT, started_at INTEGER, updated_at INTEGER NOT NULL, missing_at INTEGER,
+  purpose TEXT, purpose_hash TEXT, embedding BLOB, UNIQUE(source, key));
+CREATE TABLE IF NOT EXISTS ingest_skips(source TEXT NOT NULL, key TEXT NOT NULL, stamp TEXT NOT NULL, PRIMARY KEY(source, key));
+CREATE INDEX IF NOT EXISTS items_kind ON items(kind, updated_at DESC);
+CREATE INDEX IF NOT EXISTS items_hash ON items(source, hash);
+CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(title, tags, purpose, body, content='items', content_rowid='id');
+CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
+  INSERT INTO items_fts(rowid, title, tags, purpose, body) VALUES (new.id, new.title, new.tags, new.purpose, new.body); END;
+CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
+  INSERT INTO items_fts(items_fts, rowid, title, tags, purpose, body) VALUES ('delete', old.id, old.title, old.tags, old.purpose, old.body); END;
+CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE OF title, tags, purpose, body ON items BEGIN
+  INSERT INTO items_fts(items_fts, rowid, title, tags, purpose, body) VALUES ('delete', old.id, old.title, old.tags, old.purpose, old.body);
+  INSERT INTO items_fts(rowid, title, tags, purpose, body) VALUES (new.id, new.title, new.tags, new.purpose, new.body); END;
 CREATE TRIGGER IF NOT EXISTS obs_ad AFTER DELETE ON observations BEGIN
   INSERT INTO observations_fts(observations_fts, rowid, title, subtitle, narrative, facts, concepts)
   VALUES ('delete', old.id, old.title, old.subtitle, old.narrative, old.facts, old.concepts); END;

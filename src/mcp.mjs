@@ -2,7 +2,8 @@
 // search (cheap index) -> timeline (context) -> get_observations (full detail, only for chosen ids).
 import fs from 'node:fs';
 import readline from 'node:readline';
-import { ingestVault, searchNotes } from './vault.mjs';
+import { ingest, searchItems, listItems, getItem } from './ingest.mjs';
+import { vaultSource } from './sources.mjs';
 import { open, settings, search, timeline, getObservations, insertObservation, embedText, projectOf, TYPES, ICONS, fmtDate } from './db.mjs';
 import { embed, embedQuery } from './llm.mjs';
 import { redact } from './redact.mjs';
@@ -47,7 +48,41 @@ const TOOLS = [
     description: "Search the user's linked Obsidian vault (every note is indexed and kept current; hybrid keyword + semantic). Returns note titles, paths, tags and a snippet. Use it for the user's own knowledge, decisions, notes and preferences.",
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
   },
+  {
+    name: 'past_sessions',
+    description: 'Search or browse every recorded Claude session: Claude Code CLI, Claude Desktop (Code tab) and imported claude.ai chats, including sessions Claude Code has since deleted. Give a query to search, nothing for the most recent, or an id for the full conversation (user prompts and Claude replies, redacted).',
+    inputSchema: { type: 'object', properties: {
+      query: { type: 'string' }, id: { type: 'number' }, project: { type: 'string' }, limit: { type: 'number', description: 'Default 15' },
+    } },
+  },
+  {
+    name: 'projects',
+    description: "Registry of the user's projects (every folder Claude has worked in): purpose, intention, path, remote and recent activity. No arguments lists them all; give a name for one project's full detail.",
+    inputSchema: { type: 'object', properties: { name: { type: 'string' } } },
+  },
+  {
+    name: 'scheduled_tasks',
+    description: "Registry of the user's scheduled tasks in Claude Desktop and Cowork: schedule, enabled state, purpose and intention, prompt. Includes tasks that were deleted (marked). Give a name for one task's full detail.",
+    inputSchema: { type: 'object', properties: { name: { type: 'string' } } },
+  },
 ];
+
+const when = ms => (ms ? fmtDate(ms) : 'unknown date');
+const gone = r => (r.missing_at ? ' [deleted at source; kept in memory]' : '');
+
+function registry(db, kind, name) {
+  const rows = listItems(db, kind);
+  if (!rows.length) return kind === 'task' ? 'No scheduled tasks recorded (none found in Claude Desktop or Cowork).' : 'No projects recorded yet.';
+  const pick = name && rows.find(r => r.title.toLowerCase() === name.toLowerCase()) || (name && rows.find(r => r.title.toLowerCase().includes(name.toLowerCase())));
+  if (name && !pick) return `No ${kind} named "${name}". Known: ${rows.map(r => r.title).join(', ')}`;
+  if (pick) {
+    const r = getItem(db, pick.id);
+    return [`${r.title}${gone(r)}`, kind === 'project' ? `Path: ${r.meta.path}${r.meta.remote ? `\nRemote: ${r.meta.remote}` : ''}`
+      : `Where: ${r.meta.surface} · Schedule: ${r.meta.schedule || 'n/a'} · ${r.meta.enabled ? 'enabled' : 'disabled'}${r.meta.lastRunAt ? ` · last run ${r.meta.lastRunAt}` : ''}`,
+      r.purpose ? `\n${r.purpose}` : '\n(Purpose not written yet; source material below.)', `\n---\n${r.body.slice(0, 6000)}`].join('\n');
+  }
+  return rows.map(r => `${r.title}${gone(r)}  ${kind === 'project' ? `(${r.meta.path})` : `(${r.meta.surface}; ${r.meta.schedule || 'no schedule'}; ${r.meta.enabled ? 'enabled' : 'disabled'})`}\n  ${(r.purpose || r.excerpt || '').replace(/\s+/g, ' ').slice(0, 220)}`).join('\n\n');
+}
 
 const line = o => `#${o.id}  ${fmtDate(o.created_at)}  ${ICONS[o.type] || '•'} ${o.type.padEnd(13)} [${o.project}] ${o.title}`;
 
@@ -84,12 +119,29 @@ export async function callTool(name, a = {}, db = open(), s = settings()) {
     }
     case 'vault_search': {
       if (!s.vaultDir) return 'No Obsidian vault is linked. Link one in the open-mem GUI (Dashboard -> Obsidian vault) or set "vaultDir" in ~/.open-mem/settings.json.';
-      if (!db.prepare('SELECT 1 FROM notes LIMIT 1').get()) await ingestVault(db, s, embed);   // first use: build the index
-      const hits = searchNotes(db, a.query, qvec, a.limit || 10);
+      if (!db.prepare("SELECT 1 FROM items WHERE kind = 'note' LIMIT 1").get()) await ingest(db, vaultSource(s), embed, s);   // first use
+      const hits = searchItems(db, a.query, { kinds: ['note'], limit: a.limit || 10 }, qvec);
       return hits.length
-        ? hits.map(n => `${n.title}  (${n.path.replace(/\\/g, '/')})${n.tags ? `  #${n.tags.split(' ').join(' #')}` : ''}\n  ${n.snippet.replace(/\s+/g, ' ').trim()}`).join('\n\n')
+        ? hits.map(n => `${n.title}  (${n.meta.path})${n.tags ? `  #${n.tags.split(' ').join(' #')}` : ''}\n  ${n.snippet.replace(/\s+/g, ' ').trim()}`).join('\n\n')
         : 'No notes match.';
     }
+    case 'past_sessions': {
+      if (a.id) {
+        const r = getItem(db, a.id);
+        if (!r || r.kind !== 'session') return `No session with id ${a.id}.`;
+        return `${r.title}${gone(r)}\n${r.meta.surface} · ${when(r.started_at)} → ${when(r.updated_at)} · ${r.meta.cwd || ''}\n\n${r.body}`;
+      }
+      const rows = a.query
+        ? searchItems(db, a.query, { kinds: ['session'], project: a.project, limit: a.limit || 15 }, qvec)
+        : listItems(db, 'session', { project: a.project, limit: a.limit || 15 });
+      return rows.length
+        ? rows.map(r => `#${r.id}  ${when(r.started_at)}  ${r.meta.surface}  [${r.project || '?'}] ${r.title}${gone(r)}${r.snippet ? `\n     ${r.snippet.replace(/\s+/g, ' ')}` : ''}`).join('\n')
+        : 'No recorded sessions match.';
+    }
+    case 'projects':
+      return registry(db, 'project', a.name);
+    case 'scheduled_tasks':
+      return registry(db, 'task', a.name);
     default:
       throw new Error(`unknown tool ${name}`);
   }

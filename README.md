@@ -36,6 +36,8 @@ It is inspired by the excellent [claude-mem](https://github.com/thedotmack/claud
 | 🔍 **Hybrid search** | SQLite FTS5 keyword ranking fused with local embedding similarity (reciprocal rank fusion). |
 | 🪜 **Progressive disclosure** | MCP tools `search` → `timeline` → `get_observations` fetch full details only for the ids that matter (about 10× fewer tokens). |
 | 🆓 **Pluggable, free models** | Ollama (offline), your Claude plan (`claude -p`), or OpenRouter / Gemini / Groq / LM Studio. |
+| 🕰️ **All your Claude history** | Every Claude Code CLI and Claude Desktop session is archived from Claude's own transcripts, even after Claude deletes them (~30 days); claude.ai chats import from the official export. Background runs are filtered out. |
+| 📁 **Projects and scheduled tasks** | A registry of every project Claude has worked in and every scheduled task in Claude Desktop and Cowork, each with a "purpose and intention" written by your observer model and injected when you work there. |
 | 🗂️ **Obsidian, both ways** | Writes one note per session plus a per-project index with `[[wikilinks]]`; the `vault_search` tool lets Claude read your vault. |
 | 🛡️ **Secret redaction** | API keys, tokens, passwords, JWTs, private keys and URL credentials are stripped *before* anything is stored or sent. `<private>…</private>` keeps text out entirely. |
 | ♻️ **Deduplication** | Repeated findings are dropped by title and embedding similarity. |
@@ -134,6 +136,8 @@ flowchart LR
 | File | Role |
 |---|---|
 | `src/hooks.mjs` | Claude Code hook handler: records prompts and tool calls, renders start-of-session context |
+| `src/ingest.mjs` | Ingestion: change detection, dedup, archive/mirror handling, embeddings and watching for any Source; recall over ingested items |
+| `src/sources.mjs` | Source adapters: Obsidian vault, Claude transcripts, scheduled tasks, projects, claude.ai export |
 | `src/observer.mjs` | Background pipeline: batches → observations → dedup → summaries → Obsidian |
 | `src/llm.mjs` | Ollama, `claude -p` and OpenAI-compatible providers, plus embeddings |
 | `src/db.mjs` | SQLite schema, FTS5 triggers, hybrid search, timeline |
@@ -151,6 +155,9 @@ flowchart LR
 | `get_observations` | Full details for chosen ids |
 | `save_memory` | Explicitly remember a decision or preference |
 | `vault_search` | Search your Obsidian vault (when `vaultDir` is set) |
+| `past_sessions` | Search or open any recorded Claude conversation (CLI, Desktop, claude.ai) |
+| `projects` | All projects with purpose and intention, or one project in detail |
+| `scheduled_tasks` | All scheduled tasks with schedule, purpose and prompt |
 
 ## CLI
 
@@ -158,7 +165,9 @@ flowchart LR
 open-mem viewer [--port 37778]       web GUI
 open-mem search <query> [--project p] [--type t]
 open-mem status                      counts, queue, configuration
-open-mem drain                       process queued tool calls now
+open-mem drain                       process the queue and sync every source now
+open-mem sync                        record Claude history, scheduled tasks, projects, vault
+open-mem import-chat <file>          import claude.ai conversations.json
 open-mem export-obsidian [--dir d]   write all session notes to Obsidian
 ```
 
@@ -180,6 +189,8 @@ Run any of them with `npx -y github:kamalivaturi/open-mem <command>`.
 | `contextSummaries` | `1` | Session handoffs injected at session start |
 | `skipTools` | Todo/Task tools | Tools never recorded; `prefix*` supported |
 | `obsidianDir` / `vaultDir` | `null` | Obsidian export folder / vault Claude may search |
+| `recordClaudeHistory` / `recordScheduledTasks` / `recordProjects` | `true` | Archive Claude sessions, scheduled tasks, projects |
+| `projectIgnoreTemp` | `true` | Never treat temp or scratch folders as projects |
 | `viewerPort` | `37778` | Web GUI port |
 
 ## Privacy
@@ -195,6 +206,7 @@ Ideas being explored. Contributions welcome.
 - **Memory consolidation:** periodically merge related memories into durable "knowledge" notes and fade stale ones.
 - **ANN vector index** (`sqlite-vec`) for very large memory stores.
 - **Retry budget + dead-letter queue** for batches a model repeatedly fails on.
+- **Cowork session transcripts** once Claude stores them locally (today only Cowork scheduled tasks are on disk).
 - **More harnesses:** Codex CLI, Gemini CLI, Cursor, OpenCode.
 - **Import from claude-mem** databases.
 - **Encryption at rest** and an optional git-backed sync of the Obsidian export.

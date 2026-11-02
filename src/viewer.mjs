@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { HOME, DEFAULTS, open, settings, search, timeline, getObservations, hydrate } from './db.mjs';
 import { complete, embed, embedQuery, ping } from './llm.mjs';
 import { drain, withLock } from './observer.mjs';
-import { ingestVault, watchVault } from './vault.mjs';
+import { ingest, watch, searchItems, listItems, getItem } from './ingest.mjs';
+import { vaultSource } from './sources.mjs';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const MASK = '••••••••';
@@ -26,8 +27,11 @@ function stats(db) {
     sessions: one('SELECT COUNT(*) n FROM sessions'),
     summaries: one('SELECT COUNT(*) n FROM summaries'),
     pending: one('SELECT COUNT(*) n FROM events WHERE done = 0'),
-    notes: one('SELECT COUNT(*) n FROM notes'),
-    notesIndexedAt: db.prepare('SELECT MAX(indexed_at) n FROM notes').get().n,
+    notes: one("SELECT COUNT(*) n FROM items WHERE kind = 'note'"),
+    notesIndexedAt: db.prepare("SELECT MAX(updated_at) n FROM items WHERE kind = 'note'").get().n,
+    history: one("SELECT COUNT(*) n FROM items WHERE kind = 'session'"),
+    projectsKnown: one("SELECT COUNT(*) n FROM items WHERE kind = 'project'"),
+    tasks: one("SELECT COUNT(*) n FROM items WHERE kind = 'task'"),
     watching: !!watcher,
     projects: db.prepare('SELECT project, COUNT(*) n, MAX(created_at) last FROM observations GROUP BY project ORDER BY last DESC').all(),
     types: db.prepare('SELECT type, COUNT(*) n FROM observations GROUP BY type ORDER BY n DESC').all(),
@@ -78,7 +82,7 @@ function restartWatcher(db) {
   watcher?.close();
   watcher = null;
   const s = settings();
-  if (s.vaultDir && fs.existsSync(s.vaultDir)) watcher = watchVault(db, s, embed);
+  if (s.vaultDir && fs.existsSync(s.vaultDir)) watcher = watch(db, vaultSource(s), s.vaultDir, embed, s);
 }
 
 async function linkVault(db, b) {
@@ -89,7 +93,7 @@ async function linkVault(db, b) {
   const patch = { vaultDir: dir, obsidianDir: b.exportNotes ? path.join(dir, 'claude', 'open-mem') : null };
   if (b.vaultExclude !== undefined) patch.vaultExclude = b.vaultExclude;
   const s = saveSettings(patch);
-  const result = await ingestVault(db, s, embed);
+  const result = await ingest(db, vaultSource(s), embed, s);
   restartWatcher(db);
   return { linked: dir, isVault, ...result };
 }
@@ -175,11 +179,18 @@ export function createServer(db = open()) {
         // Also stop exporting session notes when the export folder lives inside the unlinked vault.
         const rel = s.vaultDir && s.obsidianDir ? path.relative(s.vaultDir, s.obsidianDir) : '..';
         saveSettings({ vaultDir: null, ...(!rel.startsWith('..') && !path.isAbsolute(rel) ? { obsidianDir: null } : {}) });
-        db.exec('DELETE FROM notes');
+        db.prepare("DELETE FROM items WHERE source = 'vault'").run();
         restartWatcher(db);
         return send(200, { unlinked: true });
       }
-      if (p === '/api/vault/reindex' && req.method === 'POST') return send(200, await ingestVault(db, s, embed));
+      if (p === '/api/vault/reindex' && req.method === 'POST') return send(200, await ingest(db, vaultSource(s), embed, s));
+      // Ingested items: past sessions (all Claude surfaces), projects, scheduled tasks, vault notes.
+      if (p === '/api/items') {
+        if (!['session', 'project', 'task', 'note'].includes(q.kind)) return send(400, { error: 'kind must be session, project, task or note' });
+        const opts = { project: q.project, limit: Number(q.limit) || 200 };
+        return send(200, q.q ? searchItems(db, q.q, { kinds: [q.kind], ...opts }, await embedQuery(q.q, s)) : listItems(db, q.kind, opts));
+      }
+      if ((m = p.match(/^\/api\/items\/(\d+)$/))) { const it = getItem(db, m[1]); return it ? send(200, it) : send(404, { error: 'not found' }); }
       send(404, { error: 'not found' });
     } catch (e) {
       send(500, { error: e.message });
